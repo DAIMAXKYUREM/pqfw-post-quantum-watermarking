@@ -100,16 +100,53 @@ class DocRecord:
     params: TardosParams
     p: np.ndarray
     X: np.ndarray
-    recipient_order: list[str]
-    """Position j in this list was issued codeword X[j]."""
+    session_order: list[str]
+    """Row j of X was issued to session ``session_order[j]``.
+
+    One codeword per *decryption session*, not per recipient. A person who decrypts
+    twice gets two different fingerprints and two different ledger commitments, which
+    is what makes a leak attributable to the decryption event rather than only to the
+    person. Session ids look like ``r03#1``.
+    """
+    session_owner: dict[str, str] = field(default_factory=dict)
+    """session id -> the recipient it belongs to."""
+    consumed: dict[str, str] = field(default_factory=dict)
+    """session id -> ISO timestamp of the decryption that spent it. Absent while unused."""
     salts: dict[str, str] = field(default_factory=dict)
     commitments: dict[str, str] = field(default_factory=dict)
 
     def code(self) -> TardosCode:
         return TardosCode(params=self.params, p=self.p, X=self.X)
 
-    def index_of(self, recipient_id: str) -> int:
-        return self.recipient_order.index(recipient_id)
+    def index_of(self, session_id: str) -> int:
+        return self.session_order.index(session_id)
+
+    def owner_of(self, session_id: str) -> str:
+        return self.session_owner.get(session_id, session_id)
+
+    def sessions_for(self, recipient_id: str) -> list[str]:
+        return [s for s in self.session_order if self.session_owner.get(s) == recipient_id]
+
+    def next_free_session(self, recipient_id: str) -> str | None:
+        """The next unspent session credential for this recipient, if any.
+
+        Credentials are pre-issued at protect time so a recipient can decrypt without
+        the distributor being reachable -- which an air-gapped deployment requires. The
+        pool is finite by design: when it runs out the distributor reissues, and that
+        reissue is itself a recorded act.
+        """
+        for session_id in self.sessions_for(recipient_id):
+            if session_id not in self.consumed:
+                return session_id
+        return None
+
+    def recipients(self) -> list[str]:
+        seen: list[str] = []
+        for session_id in self.session_order:
+            owner = self.owner_of(session_id)
+            if owner not in seen:
+                seen.append(owner)
+        return seen
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -121,7 +158,9 @@ class DocRecord:
             "params": self.params.to_json(),
             "p": _pack_floats(self.p),
             "X": _pack_bits(self.X),
-            "recipient_order": self.recipient_order,
+            "session_order": self.session_order,
+            "session_owner": self.session_owner,
+            "consumed": self.consumed,
             "salts": self.salts,
             "commitments": self.commitments,
         }
@@ -138,7 +177,9 @@ class DocRecord:
             params=params,
             p=_unpack_floats(obj["p"]),
             X=_unpack_bits(obj["X"], params.m),
-            recipient_order=list(obj["recipient_order"]),
+            session_order=list(obj["session_order"]),
+            session_owner=dict(obj.get("session_owner", {})),
+            consumed=dict(obj.get("consumed", {})),
             salts=dict(obj.get("salts", {})),
             commitments=dict(obj.get("commitments", {})),
         )
@@ -146,7 +187,7 @@ class DocRecord:
     def __repr__(self) -> str:
         return (
             f"DocRecord(doc_id={self.doc_id!r}, carrier={self.carrier!r}, "
-            f"slots={self.params.m}, recipients={len(self.recipient_order)})"
+            f"slots={self.params.m}, sessions={len(self.session_order)})"
         )
 
 

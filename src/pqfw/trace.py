@@ -33,10 +33,17 @@ from pqfw.tardos import Accusation
 @dataclass(frozen=True)
 class Suspect:
     recipient_id: str
+    session_id: str
+    """The decryption event, not just the person. A recipient who opened the document
+    three times has three codewords; this says which one is in the leaked copy."""
     accusation: Accusation
 
     def to_json(self) -> dict[str, Any]:
-        return {"recipient_id": self.recipient_id, **self.accusation.to_json()}
+        return {
+            "recipient_id": self.recipient_id,
+            "session_id": self.session_id,
+            **self.accusation.to_json(),
+        }
 
 
 @dataclass(frozen=True)
@@ -109,6 +116,7 @@ class TraceReport:
             "m": self.m,
             "m_eff": self.m_eff,
             "accused": self.accused.to_json() if self.accused else None,
+            "session_id": self.accused.session_id if self.accused else None,
             "runners_up": [s.to_json() for s in self.runners_up],
             "ledger": {
                 "seq": self.ledger_seq,
@@ -155,14 +163,18 @@ def trace(
 
     def as_suspect(a: Accusation) -> Suspect:
         index = a.recipient_index
-        rid = (
-            record.recipient_order[index]
-            if index < len(record.recipient_order)
+        session_id = (
+            record.session_order[index]
+            if index < len(record.session_order)
             else f"<unissued codeword {index}>"
         )
-        return Suspect(recipient_id=rid, accusation=a)
+        return Suspect(
+            recipient_id=record.owner_of(session_id),
+            session_id=session_id,
+            accusation=a,
+        )
 
-    issued = [a for a in ranked if a.recipient_index < len(record.recipient_order)]
+    issued = [a for a in ranked if a.recipient_index < len(record.session_order)]
     top = as_suspect(issued[0]) if issued else None
     others = [as_suspect(a) for a in issued[1 : 1 + runners_up]]
 
@@ -189,15 +201,16 @@ def trace(
         )
         return TraceReport(**report_kwargs)
 
-    # 4. find the receipt by recommitting to the accused recipient's codeword
+    # 4. find the receipt by recommitting to the accused *session's* codeword
+    session_id = top.session_id
     rid = top.recipient_id
-    salt_hex = record.salts.get(rid)
+    salt_hex = record.salts.get(session_id)
     if salt_hex is None:
-        notes.append(f"no commitment salt stored for {rid}: cannot locate a receipt")
+        notes.append(f"no commitment salt stored for {session_id}: cannot locate a receipt")
         return TraceReport(**report_kwargs)
 
     commitment = codeword_commitment(
-        record.X[record.index_of(rid)], bytes.fromhex(salt_hex)
+        record.X[record.index_of(session_id)], bytes.fromhex(salt_hex)
     )
     entry = ledger.find_by_commitment(commitment)
     if entry is None:
@@ -248,7 +261,11 @@ def trace_bits(
     """
     record = store.doc(doc_id)
     return [
-        Suspect(recipient_id=record.recipient_order[a.recipient_index], accusation=a)
+        Suspect(
+            recipient_id=record.owner_of(record.session_order[a.recipient_index]),
+            session_id=record.session_order[a.recipient_index],
+            accusation=a,
+        )
         for a in tardos.rank(record.code(), y)
-        if a.recipient_index < len(record.recipient_order)
+        if a.recipient_index < len(record.session_order)
     ]

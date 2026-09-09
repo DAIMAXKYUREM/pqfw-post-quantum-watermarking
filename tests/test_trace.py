@@ -87,6 +87,50 @@ def test_end_to_end_single_leaker(prepared) -> None:
     assert report.verdict == "IDENTIFIED"
 
 
+def test_two_decryptions_by_one_person_are_forensically_distinct(prepared) -> None:
+    """The spec asks for a watermark specific to each recipient *and decryption session*.
+
+    Before session credentials existed, a person who opened the document twice got
+    byte-identical copies and an identical ledger commitment, so a leak was
+    attributable to the person but not to the event. Each decryption now spends its own
+    credential, carrying its own codeword.
+    """
+    store, _ = prepared
+
+    first = workflow.open_as(store, DOC_ID, "r04")
+    second = workflow.open_as(store, DOC_ID, "r04")
+    workflow.checkpoint(store)
+
+    assert first.session_id != second.session_id
+    assert first.document != second.document, "two sessions must not produce one file"
+    assert first.doc_hash != second.doc_hash
+
+    record = store.doc(DOC_ID)
+    assert record.commitments[first.session_id] != record.commitments[second.session_id]
+
+    # and each leaked copy resolves to its own decryption event
+    for opened in (first, second):
+        report = workflow.trace_leak(store, DOC_ID, opened.document)
+        assert report.accused is not None
+        assert report.accused.recipient_id == "r04"
+        assert report.accused.session_id == opened.session_id
+        assert report.ledger_seq == opened.ledger_seq
+        assert report.conclusive is True
+
+    assert first.ledger_seq != second.ledger_seq
+
+
+def test_a_recipient_cannot_decrypt_more_times_than_they_hold_credentials(prepared) -> None:
+    """The pool is finite by design, and running out is a refusal rather than a reused
+    fingerprint."""
+    store, _ = prepared
+    issued = len(store.doc(DOC_ID).sessions_for("r19"))
+    for _ in range(issued):
+        workflow.open_as(store, DOC_ID, "r19")
+    with pytest.raises(ValueError, match="spent all"):
+        workflow.open_as(store, DOC_ID, "r19")
+
+
 def test_the_report_always_carries_a_p_value_and_the_runners_up(prepared) -> None:
     """Never a bare 'the leaker is recipient 4'."""
     store, _ = prepared
@@ -195,10 +239,11 @@ def test_a_leak_with_no_receipt_is_not_a_positive_identification(prepared) -> No
     store_doc = store.doc(DOC_ID)
     carrier = get_carrier("text-zwsp")
 
-    # forge the copy directly from the sealed codeword, without anybody decrypting
+    # forge the copy directly from a sealed codeword, without anybody decrypting it
     from pqfw import package as pkg
 
-    plan_bits = store_doc.X[store_doc.index_of(package_holder)]
+    unspent_session = store_doc.sessions_for(package_holder)[0]
+    plan_bits = store_doc.X[store_doc.index_of(unspent_session)]
     reference = workflow.open_as(store, DOC_ID, "r00").document
     forged = _rebuild_with_bits(reference, store_doc.locators, plan_bits, carrier)
     del pkg

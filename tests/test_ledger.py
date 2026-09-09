@@ -27,6 +27,7 @@ def _receipt(ledger: Ledger, rid: str, sig_pk: bytes, sig_sk: bytes, n: int = 0)
     record = L.build_receipt(
         doc_id="doc-1",
         recipient_id=rid,
+        session_id=f"{rid}#0",
         recipient_sig_pk=sig_pk,
         doc_hash=pqc.sha3_hex(f"copy-{rid}".encode()),
         commitment=commitment,
@@ -279,6 +280,7 @@ def test_the_ledger_never_contains_a_codeword() -> None:
         assert set(entry.record) == {
             "doc_id",
             "recipient_id",
+            "session_id",
             "recipient_sig_pk_fpr",
             "timestamp",
             "doc_hash",

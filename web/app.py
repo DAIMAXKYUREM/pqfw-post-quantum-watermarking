@@ -201,6 +201,8 @@ def api_open(
 
     return {
         "recipient_id": recipient_id,
+        "session_id": result.session_id,
+        "sessions_left": result.sessions_left,
         "doc_hash": result.doc_hash,
         "ledger_seq": result.ledger_seq,
         "entry_hash": result.entry_hash,
@@ -259,10 +261,15 @@ def api_prove_key_binding(
     record = store.doc("demo")
     package = pkg.DistributionPackage.load(store.package_path("demo"))
     device = store.recipient_device(recipient_id)
-    bundle = pkg.unwrap_bundle(package, recipient_id, device["kem_sk"])
+
+    sessions = record.sessions_for(recipient_id)
+    if not sessions:
+        raise HTTPException(400, f"no decryption credentials issued to {recipient_id!r}")
+    session_id = sessions[0]
+    bundle = pkg.unwrap_bundle(package, session_id, device["kem_sk"])
 
     index = int(payload.get("slot", 0)) % package.m
-    held = int(record.X[record.index_of(recipient_id)][index])
+    held = int(record.X[record.index_of(session_id)][index])
     other = 1 - held
 
     issued_ok = False
@@ -288,6 +295,7 @@ def api_prove_key_binding(
 
     return {
         "recipient_id": recipient_id,
+        "session_id": session_id,
         "slot": index,
         "variant_they_hold": held,
         "variant_they_do_not": other,
@@ -353,11 +361,15 @@ def api_collude(
         raise HTTPException(400, f"unknown strategy {strategy!r}")
 
     record = store.doc("demo")
-    unknown = [r for r in ids if r not in record.recipient_order]
+    unknown = [r for r in ids if not record.sessions_for(r)]
     if unknown:
         raise HTTPException(400, f"unknown recipients: {', '.join(unknown)}")
 
-    rows = np.array([record.X[record.index_of(r)] for r in ids], dtype=np.uint8)
+    # Each colluder brings the copy from their first decryption credential.
+    coalition_sessions = [record.sessions_for(r)[0] for r in ids]
+    rows = np.array(
+        [record.X[record.index_of(s)] for s in coalition_sessions], dtype=np.uint8
+    )
     forged = tardos.collude(rows, strategy, np.random.default_rng())
 
     from pqfw.trace import trace_bits
@@ -366,6 +378,7 @@ def api_collude(
     agreed = int((rows.min(axis=0) == rows.max(axis=0)).sum())
     return {
         "coalition": ids,
+        "coalition_sessions": coalition_sessions,
         "strategy": strategy,
         "slots": int(rows.shape[1]),
         "slots_forced": agreed,

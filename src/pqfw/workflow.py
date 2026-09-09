@@ -24,6 +24,12 @@ from pqfw.trace import TraceReport, trace
 
 DEFAULT_WITNESSES = 3
 DEFAULT_THRESHOLD = 2
+DEFAULT_SESSIONS = 3
+"""Decryption credentials pre-issued per recipient.
+
+Each one carries its own Tardos codeword, so each decryption yields a distinct
+fingerprint and a distinct ledger commitment.
+"""
 
 
 @dataclass(frozen=True)
@@ -34,6 +40,9 @@ class ProtectResult:
     capacity: int
     capped: bool
     recipients: int
+    sessions: int
+    """Total decryption credentials issued: one codeword and one wrapped bundle each."""
+    sessions_per_recipient: int
     package_path: str
     size: dict[str, int]
     achievable_eps: float
@@ -49,6 +58,8 @@ class ProtectResult:
             "carrier_capacity": self.capacity,
             "capped_by_carrier": self.capped,
             "recipients": self.recipients,
+            "sessions": self.sessions,
+            "sessions_per_recipient": self.sessions_per_recipient,
             "package": self.package_path,
             "size": self.size,
             "achievable_eps": self.achievable_eps,
@@ -59,6 +70,9 @@ class ProtectResult:
 class OpenResult:
     doc_id: str
     recipient_id: str
+    session_id: str
+    """Which of the recipient's decryption credentials this copy came from."""
+    sessions_left: int
     document: bytes
     doc_hash: str
     ledger_seq: int
@@ -99,6 +113,7 @@ def protect(
     eps1: float = 1e-6,
     constant: float = 100.0,
     slots: int | None = None,
+    sessions_per_recipient: int = DEFAULT_SESSIONS,
     rng: np.random.Generator | None = None,
 ) -> ProtectResult:
     """Encrypt once, for every enrolled recipient, with a distinct fingerprint each.
@@ -121,25 +136,45 @@ def protect(
     if m < 1:
         raise ValueError(f"the {carrier_name} carrier found no usable slots in this document")
 
+    # One codeword, and one wrapped bundle, per *decryption session* rather than per
+    # recipient. A person who opens the document twice must not receive the same bytes
+    # twice: identical copies make a leak attributable to the person but not to the
+    # decryption event, and the spec asks for the event.
+    #
+    # The credentials are pre-issued here rather than minted on demand, so a recipient
+    # can decrypt with the distributor unreachable -- which is what an air-gapped
+    # deployment means. The pool is finite by design; running out is a reissue, and a
+    # reissue is itself an act somebody has to perform.
+    session_ids: list[str] = []
+    session_owner: dict[str, str] = {}
+    for rid in recipient_ids:
+        for s in range(sessions_per_recipient):
+            session_id = f"{rid}#{s}"
+            session_ids.append(session_id)
+            session_owner[session_id] = rid
+
     code = tardos.generate(
-        tardos.TardosParams(m=m, n=len(recipient_ids), c=coalition, eps1=eps1), rng
+        tardos.TardosParams(m=m, n=len(session_ids), c=coalition, eps1=eps1), rng
     )
     plan = carrier.plan(source, m, rng)
 
+    # One Recipient entry per session, sharing the owner's keys. The envelope's AAD
+    # therefore binds to the session id, so an envelope cannot be replayed from one
+    # session onto another even by the person who holds both.
     recipients = [
         pkg.Recipient(
-            recipient_id=rid,
-            kem_pk=_b64d(store.recipient_public(rid)["kem_pk"]),
-            sig_pk=_b64d(store.recipient_public(rid)["sig_pk"]),
+            recipient_id=session_id,
+            kem_pk=_b64d(store.recipient_public(session_owner[session_id])["kem_pk"]),
+            sig_pk=_b64d(store.recipient_public(session_owner[session_id])["sig_pk"]),
         )
-        for rid in recipient_ids
+        for session_id in session_ids
     ]
     package = pkg.build_package(doc_id, plan, code, recipients)
 
-    salts = {rid: os.urandom(16).hex() for rid in recipient_ids}
+    salts = {sid: os.urandom(16).hex() for sid in session_ids}
     commitments = {
-        rid: L.codeword_commitment(code.X[j], bytes.fromhex(salts[rid]))
-        for j, rid in enumerate(recipient_ids)
+        sid: L.codeword_commitment(code.X[j], bytes.fromhex(salts[sid]))
+        for j, sid in enumerate(session_ids)
     }
 
     store.put_doc(
@@ -152,7 +187,8 @@ def protect(
             params=code.params,
             p=code.p,
             X=code.X,
-            recipient_order=recipient_ids,
+            session_order=session_ids,
+            session_owner=session_owner,
             salts=salts,
             commitments=commitments,
         )
@@ -168,6 +204,8 @@ def protect(
         capacity=capacity,
         capped=m < wanted,
         recipients=len(recipient_ids),
+        sessions=len(session_ids),
+        sessions_per_recipient=sessions_per_recipient,
         package_path=str(store.package_path(doc_id)),
         size=package.size_report(),
         achievable_eps=tardos.achievable_eps(code),
@@ -185,24 +223,40 @@ def open_as(store: Store, doc_id: str, recipient_id: str) -> OpenResult:
     package = pkg.DistributionPackage.load(store.package_path(doc_id))
     device = store.recipient_device(recipient_id)
 
-    opened = pkg.open_package(package, recipient_id, device["kem_sk"])
+    session_id = record.next_free_session(recipient_id)
+    if session_id is None:
+        raise ValueError(
+            f"{recipient_id} has spent all "
+            f"{len(record.sessions_for(recipient_id))} decryption credentials for "
+            f"{doc_id!r}; the distributor must issue more"
+        )
+
+    opened = pkg.open_package(package, session_id, device["kem_sk"])
 
     ledger = store.ledger()
     receipt = L.build_receipt(
         doc_id=doc_id,
         recipient_id=recipient_id,
+        session_id=session_id,
         recipient_sig_pk=device["sig_pk"],
         doc_hash=opened.doc_hash,
-        commitment=record.commitments[recipient_id],
+        commitment=record.commitments[session_id],
         clock=store.clock,
     )
     signature = L.sign_receipt(receipt, device["sig_sk"])
     entry_hash = ledger.append(receipt, signature, device["sig_pk"])
     store.save_ledger(ledger)
 
+    record.consumed[session_id] = store.clock.now()
+    store.save()
+
     return OpenResult(
         doc_id=doc_id,
         recipient_id=recipient_id,
+        session_id=session_id,
+        sessions_left=len(
+            [s for s in record.sessions_for(recipient_id) if s not in record.consumed]
+        ),
         document=opened.document,
         doc_hash=opened.doc_hash,
         ledger_seq=ledger.entries[-1].seq,

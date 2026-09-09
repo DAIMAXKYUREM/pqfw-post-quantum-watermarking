@@ -94,16 +94,23 @@ def codeword_commitment(codeword: Sequence[int], salt: bytes) -> str:
 def build_receipt(
     doc_id: str,
     recipient_id: str,
+    session_id: str,
     recipient_sig_pk: bytes,
     doc_hash: str,
     commitment: str,
     clock: Clock,
     nonce: bytes | None = None,
 ) -> dict[str, str]:
-    """The object the recipient signs. Canonical JSON is what actually gets signed."""
+    """The object the recipient signs. Canonical JSON is what actually gets signed.
+
+    ``session_id`` names the specific decryption, not just the person: two decryptions
+    by the same recipient carry different codewords and therefore different
+    commitments, so a leaked copy resolves to one event rather than to a set of them.
+    """
     return {
         "doc_id": doc_id,
         "recipient_id": recipient_id,
+        "session_id": session_id,
         "recipient_sig_pk_fpr": pqc.pk_fingerprint(recipient_sig_pk),
         "timestamp": clock.now(),
         "doc_hash": doc_hash,
