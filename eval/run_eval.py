@@ -573,46 +573,98 @@ def _plt():
 
 
 def fig_coalition(rows: list[dict[str, Any]]) -> None:
+    """Two regimes, plotted separately -- putting them on one line per strategy would
+    draw a vertical jump between two different code lengths and mean nothing."""
     plt = _plt()
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9, 3.6))
-    for strategy in sorted({r["strategy"] for r in rows}):
-        subset = sorted((r for r in rows if r["strategy"] == strategy),
-                        key=lambda r: r["coalition_size"])
-        ax1.plot([r["coalition_size"] for r in subset],
-                 [r["detection_rate"] for r in subset], marker="o", label=strategy)
-        ax2.plot([r["coalition_size"] for r in subset],
-                 [r["mean_rank_first_colluder"] for r in subset], marker="o", label=strategy)
-    ax1.set(xlabel="coalition size", ylabel="detection rate", ylim=(-0.02, 1.02),
-            title="A colluder named, at p < 1e-6")
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9.6, 3.9))
+    styles = {"prescribed": dict(ls="-", marker="o"), "practical": dict(ls="--", marker="x")}
+    colors = {s: c for s, c in zip(
+        STRATEGIES, ["#1f77b4", "#d62728", "#2ca02c", "#9467bd", "#ff7f0e"]
+    )}
+
+    for regime in ("prescribed", "practical"):
+        for strategy in STRATEGIES:
+            subset = sorted(
+                (r for r in rows if r["strategy"] == strategy and r["regime"] == regime),
+                key=lambda r: r["coalition_size"],
+            )
+            if not subset:
+                continue
+            style = dict(styles[regime], color=colors[strategy], lw=1.4, ms=5)
+            label = strategy if regime == "prescribed" else None
+            ax1.plot([r["coalition_size"] for r in subset],
+                     [r["detection_rate"] for r in subset], label=label, **style)
+            ax2.plot([r["coalition_size"] for r in subset],
+                     [r["mean_rank_first_colluder"] for r in subset], **style)
+
+    practical_m = next((r["m"] for r in rows if r["regime"] == "practical"), None)
+    ax1.set(xlabel="coalition size", ylabel="detection rate", ylim=(-0.03, 1.05),
+            title="A colluder named, at a provable p < 1e-6")
     ax2.set(xlabel="coalition size", ylabel="mean rank of first colluder",
             title="Where the first real colluder ranks")
-    ax2.set_yscale("log")
-    ax1.legend(fontsize=7)
-    fig.tight_layout()
+    ax2.set_ylim(0.9, max(2.0, max(r["mean_rank_first_colluder"] for r in rows) * 1.3))
+
+    handles, labels = ax1.get_legend_handles_labels()
+    from matplotlib.lines import Line2D
+
+    handles += [
+        Line2D([], [], color="k", ls="-", marker="o", ms=4,
+               label="m = 100c^2 ln(1/eps)  (prescribed)"),
+        Line2D([], [], color="k", ls="--", marker="x", ms=4,
+               label=f"m = {practical_m}  (what a document holds)"),
+    ]
+    ax1.legend(handles=handles, fontsize=6.5, loc="center left")
+    fig.suptitle(
+        "A short code costs confidence, not correctness: detection collapses while the "
+        "true colluder stays ranked first",
+        fontsize=8, y=0.015,
+    )
+    fig.tight_layout(rect=(0, 0.07, 1, 1))
     fig.savefig(RESULTS / "fig1_coalition.png")
     plt.close(fig)
 
 
 def fig_false_accusation(rows: list[dict[str, Any]]) -> None:
     plt = _plt()
-    fig, ax = plt.subplots(figsize=(5.4, 4.0))
+    fig, ax = plt.subplots(figsize=(5.8, 4.2))
     nominal = [r["nominal_alpha"] for r in rows]
     trials = rows[0]["trials"]
     floor = 1.0 / trials
 
-    gaussian = [max(r["gaussian_empirical_rate"], floor / 3) for r in rows]
-    bound = [max(r["bound_empirical_rate"], floor / 3) for r in rows]
+    def series(key: str):
+        """Zero observations are censored, not measured: draw them hollow at the floor."""
+        values, hollow = [], []
+        for r in rows:
+            rate = r[key]
+            values.append(rate if rate > 0 else floor)
+            hollow.append(rate == 0.0)
+        return values, hollow
 
+    gaussian, g_hollow = series("gaussian_empirical_rate")
+    bound, b_hollow = series("bound_empirical_rate")
+
+    ax.fill_between([min(nominal), max(nominal)], [min(nominal), max(nominal)], 1.0,
+                    color="#c62828", alpha=0.07, lw=0)
     ax.plot(nominal, nominal, "k--", lw=1, label="nominal alpha (y = x)")
-    ax.plot(nominal, gaussian, marker="o", color="#c62828",
-            label="empirical, Gaussian p-value")
-    ax.plot(nominal, bound, marker="s", color="#2e7d32",
-            label="empirical, provable bound")
-    ax.axhline(floor, color="grey", lw=0.8, ls=":",
-               label=f"resolution floor (1/{trials:,})")
-    ax.fill_between(nominal, nominal, [1.0] * len(nominal), color="#c62828", alpha=0.06)
-    ax.text(nominal[1], nominal[1] * 4, "above the line =\nmore false accusations\nthan advertised",
-            fontsize=6.5, color="#c62828")
+    ax.plot(nominal, gaussian, color="#c62828", lw=1.4, label="empirical, Gaussian p-value")
+    ax.plot(nominal, bound, color="#2e7d32", lw=1.4, label="empirical, provable bound")
+    for xs, ys, hollow, color, marker in (
+        (nominal, gaussian, g_hollow, "#c62828", "o"),
+        (nominal, bound, b_hollow, "#2e7d32", "s"),
+    ):
+        for x, y, is_hollow in zip(xs, ys, hollow):
+            ax.plot([x], [y], marker=marker, ms=5, color=color,
+                    mfc="white" if is_hollow else color, mew=1.2)
+
+    ax.axhline(floor, color="grey", lw=0.8, ls=":")
+    ax.annotate(
+        "above this line: more false\naccusations than advertised",
+        xy=(1.05e-4, 5.5e-4), xytext=(3e-8, 5e-2), fontsize=6.5, color="#c62828",
+        arrowprops=dict(arrowstyle="->", color="#c62828", lw=0.7),
+    )
+    ax.text(min(nominal) * 1.4, floor * 1.5,
+            f"hollow marker = zero events in {trials:,} trials\n(true rate is below this floor)",
+            fontsize=6, color="grey")
     ax.set(xscale="log", yscale="log", xlabel="nominal alpha",
            ylabel="empirical false-accusation rate",
            title=f"{trials:,} innocent trials (m=800, n=100)")
@@ -635,19 +687,41 @@ def fig_erasure(rows: list[dict[str, Any]]) -> None:
 
 
 def fig_attacks(rows: list[dict[str, Any]]) -> None:
+    """Bit error rate, not readable fraction.
+
+    An attack that strips the zero-width spaces leaves every slot perfectly
+    *readable* -- and reading 0 from all of them. Plotting readability would show a
+    full green bar for an attack that completely defeats the carrier, so the primary
+    axis is the error rate and readability is annotated beside it.
+    """
     plt = _plt()
-    fig, ax = plt.subplots(figsize=(7.2, 4.0))
+    fig, ax = plt.subplots(figsize=(8.4, 4.4))
     names = [r["attack"] for r in rows]
-    survived = [1 - r["erasure_rate"] for r in rows]
+    ber = [float(r["bit_error_rate"]) for r in rows]
     colors = ["#2e7d32" if r["identified_correctly"] else "#c62828" for r in rows]
-    ax.barh(names, survived, color=colors)
+
+    ax.barh(names, ber, color=colors, height=0.62)
+    ax.axvline(0.5, color="black", ls="--", lw=0.9)
+    ax.text(0.505, len(rows) - 0.4, "0.5 = a coin flip:\nno signal left at all",
+            fontsize=6.5, va="top")
+
     for i, r in enumerate(rows):
-        label = "traced" if r["identified_correctly"] else "DEFEATS THE CARRIER"
-        ax.text(min(survived[i] + 0.02, 0.98), i, label, va="center", fontsize=7)
-    ax.set(xlabel="fraction of slots still readable", xlim=(0, 1.25),
-           title="Attacks on the zero-width-space carrier (green traced, red defeated)")
+        readable = 1.0 - float(r["erasure_rate"])
+        verdict = "traced" if r["identified_correctly"] else "DEFEATED"
+        ax.text(float(r["bit_error_rate"]) + 0.012, i,
+                f"{verdict}   ({readable:.0%} of slots readable, z={float(r['top_z']):.1f})",
+                va="center", fontsize=6.5,
+                color="#2e7d32" if r["identified_correctly"] else "#c62828")
+
+    ax.set(xlabel="bit error rate among readable slots", xlim=(0, 0.95),
+           title="Attacks on the zero-width-space carrier")
     ax.invert_yaxis()
-    fig.tight_layout()
+    fig.suptitle(
+        "Truncation only removes slots, so tracing survives it. Anything that rewrites "
+        "the whitespace -- or shifts it -- does not.",
+        fontsize=8, y=0.018,
+    )
+    fig.tight_layout(rect=(0, 0.075, 1, 1))
     fig.savefig(RESULTS / "fig4_attacks.png")
     plt.close(fig)
 
