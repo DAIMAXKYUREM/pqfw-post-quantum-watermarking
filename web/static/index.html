@@ -116,6 +116,16 @@
     vertical-align:-1px;margin-right:6px}
   @keyframes sp{to{transform:rotate(360deg)}}
 
+  .nodes{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:10px;
+    margin:4px 0 16px}
+  .node{background:rgba(74,222,128,.07);border:1px solid rgba(74,222,128,.24);
+    border-radius:12px;padding:11px 13px;display:flex;flex-direction:column;gap:3px}
+  .node.bad{background:rgba(251,113,133,.09);border-color:rgba(251,113,133,.32)}
+  .node b{font-size:12.5px;font-weight:620;color:#86efac}
+  .node.bad b{color:#fda4af}
+  .node span{font-size:11px;color:var(--dim)}
+  .node code{font-size:10px;background:transparent;padding:0;color:var(--faint)}
+
   .out{margin-top:20px}
   .out:empty{margin:0}
   .kv{display:grid;grid-template-columns:max-content 1fr;gap:7px 22px;font-size:13.5px}
@@ -180,7 +190,7 @@
 <div class="shell">
 
   <div class="top">
-    <div class="brand"><b>PQFW</b><span>post-quantum forensic watermarking</span></div>
+    <div class="brand"><b>PQFW</b><span>post-quantum forensic watermarking &middot; offline, air-gapped</span></div>
     <div class="algs" id="algs"><span class="chip">connecting&hellip;</span></div>
   </div>
 
@@ -254,9 +264,10 @@
 
     <section id="s5" class="step">
       <div class="row">
-        <button class="primary" id="bAudit">Verify chain &amp; checkpoints</button>
-        <button class="danger" id="bTamper">Corrupt entry 0</button>
-        <button id="bRestore">Restore</button>
+        <button class="primary" id="bAudit">Verify the network</button>
+        <button class="danger" id="bCompromise">Compromise validator #1</button>
+        <button class="danger" id="bTamper">Rewrite a receipt</button>
+        <button id="bRestore">Heal &amp; restore</button>
       </div>
       <div class="out" id="oAudit"></div>
     </section>
@@ -269,14 +280,34 @@
   </div>
 
   <div class="limits">
-    <strong>Real cryptography, server-side.</strong> liboqs ML-KEM-768 and ML-DSA-65,
-    AES-256-GCM, SHA3-256, and a symmetric Tardos fingerprinting code. Nothing here is
-    pre-computed. <strong>Known limits, stated deliberately:</strong> the text carrier does
-    not survive whitespace normalisation, retyping, OCR, or an inserted word &mdash; the
-    threat model is redistribution of the file, not manual reconstruction. The distributor
-    knows every codeword, so the guarantee is <em>traceability</em>, not
-    <em>unframeability</em>. When an attack wins, the result is a failure to identify
-    &mdash; never the wrong person.
+    <p style="margin:0 0 12px">
+      <strong>Real cryptography, server-side.</strong> NIST-standardised post-quantum
+      primitives throughout &mdash; <strong>ML-KEM-768</strong> (FIPS&nbsp;203) for key
+      encapsulation and <strong>ML-DSA-65</strong> (FIPS&nbsp;204) for the digital
+      signature that binds each decryption to its recipient, giving
+      <strong>non-repudiation</strong>: the record is signed with the recipient's own
+      private key, so they cannot later deny having decrypted the file. Content and slot
+      variants use AES-256-GCM; hashing, commitments and Merkle roots use SHA3-256.
+      Nothing on this page is pre-computed.
+    </p>
+    <p style="margin:0 0 12px">
+      <strong>Immutable audit layer.</strong> Signed decryption records are committed to
+      a permissioned <strong>distributed ledger</strong>: three independent validator
+      nodes, each holding its own replica, each re-verifying every receipt, committing
+      blocks at a <strong>2-of-3 quorum</strong>. No single administrator or compromised
+      account can retroactively alter or erase a record &mdash; step&nbsp;5 runs that
+      attack live. <strong>Fully offline and air-gapped</strong>: no cloud KMS, no public
+      blockchain, no external network call at any point. A test that replaces the socket
+      layer with one refusing every operation runs the whole pipeline anyway.
+    </p>
+    <p style="margin:0">
+      <strong>Known limits, stated deliberately.</strong> The text carrier does not
+      survive whitespace normalisation, retyping, OCR, or an inserted word &mdash; the
+      threat model is redistribution of the file, not manual reconstruction. The
+      distributor knows every codeword, so the guarantee is <em>traceability</em>, not
+      <em>unframeability</em>. When an attack wins, the result is a failure to identify
+      &mdash; never the wrong person.
+    </p>
   </div>
 
 </div>
@@ -436,13 +467,13 @@ const STEPS = [
   {id:'s1', title:'Enrol the recipients',
    line:'Each person gets an ML-KEM-768 key pair to receive their key bundle, and an ML-DSA-65 pair to sign a receipt when they decrypt. Pick a number and generate.'},
   {id:'s2', title:'Encrypt once, for everybody',
-   line:'The document splits into a body plus m mark slots. Each slot is written two ways that look identical, encrypted under different keys. Everyone gets the same ciphertext.'},
+   line:'Broadcast-encrypt, individually-decrypt: the document splits into a body plus m mark slots, each written two ways that look identical and encrypted under different keys. Everyone gets the same ciphertext.'},
   {id:'s3', title:'Decrypt as one recipient',
-   line:'They unwrap their bundle and decrypt exactly one rendering per slot. Then press the second button: their real key, against the rendering they were never issued.'},
+   line:'Each decryption spends one credential and produces its own fingerprint, so two opens by the same person are forensically distinct. Then press the second button: their real key, against the rendering they were never issued.'},
   {id:'s4', title:'Trace the leak',
    line:'Read the slots back, score them against every codeword, and report a provable bound on the chance an innocent person scores this high. Or splice three copies together and try to hide.'},
-  {id:'s5', title:'Audit the ledger',
-   line:'Every decryption is a signed entry in a hash chain, witnessed by a Merkle checkpoint. Corrupt one and watch what stops adding up.'},
+  {id:'s5', title:'Audit the distributed ledger',
+   line:'Receipts are replicated across three independent validators, committed 2-of-3 in signed blocks. Compromise one and watch it get out-voted; rewrite a receipt and watch the signature refuse to follow.'},
 ];
 let step = 0;
 const done = new Set();
@@ -630,6 +661,8 @@ $('bOpen').onclick = async () => {
     $('oOpen').innerHTML =
       '<dl class="kv">' +
       '<dt>recipient</dt><dd>' + esc(d.recipient_id) + '</dd>' +
+      '<dt>decryption session</dt><dd>' + esc(d.session_id) + '  &middot;  ' +
+        d.sessions_left + ' credential' + (d.sessions_left === 1 ? '' : 's') + ' left</dd>' +
       '<dt>their copy</dt><dd>' + bytes(d.bytes) + ' &middot; <a href="' + d.download +
         '" style="color:var(--accent)">download</a></dd>' +
       '<dt>SHA3-256</dt><dd>' + esc(d.doc_hash) + '</dd>' +
@@ -638,7 +671,7 @@ $('bOpen').onclick = async () => {
     complete(2);
     orb.flash('good');
     say('Signed for, and marked',
-        esc(d.recipient_id) + ' holds a copy nobody else has, and signed an ML-DSA-65 receipt for it. Now try the other button.');
+        'Session ' + esc(d.session_id) + '. Open it again and they get a different fingerprint — the mark is bound to the decryption, not just the person. Now try the other button.');
   } catch (e) { fail('oOpen', e); }
   busy($('bOpen'), false);
 };
@@ -788,7 +821,9 @@ $('bCollude').onclick = async () => {
 
 /* -------------------------------------------------------------------- step 5 */
 async function audit(action, seq){
-  const btn = action === 'tamper' ? $('bTamper') : action === 'restore' ? $('bRestore') : $('bAudit');
+  const btn = action === 'tamper' ? $('bTamper')
+            : action === 'compromise' ? $('bCompromise')
+            : (action === 'restore' || action === 'heal') ? $('bRestore') : $('bAudit');
   busy(btn, true);
   try {
     const d = await api('/api/audit', {action: action, seq: seq || 0});
@@ -802,11 +837,51 @@ async function audit(action, seq){
         esc(String(d.changed.after).slice(0, 32)) + '…</span></div>';
     }
     if (d.changed && action === 'restore'){
-      html += '<div class="note">' +
-        (d.changed.restored ? 'Restored the pre-tamper ledger.' : 'Nothing to restore.') + '</div>';
+      html += '<div class="note">' + (d.changed.restored
+        ? 'Restored the pre-tamper ledger and re-synced every replica from the honest quorum.'
+        : 'Nothing to restore.') + '</div>';
     }
+    if (d.changed && action === 'compromise'){
+      html += '<div class="warnbox">Validator <strong>' + d.changed.node + '</strong> was taken over ' +
+        'and receipt ' + d.changed.seq + ' rewritten <em>inside that replica only</em> — a single ' +
+        'compromised account, which is the attack the requirement names by name.<br>' +
+        '<span style="font-family:var(--mono);font-size:11.5px">was ' +
+        esc(String(d.changed.before).slice(0, 32)) + '…</span></div>';
+    }
+    const cons = d.consensus;
+    if (cons){
+      html += '<dl class="kv" style="margin-bottom:14px">' +
+        '<dt>validator network</dt><dd>' + cons.nodes + ' independent replicas &middot; ' +
+        cons.quorum + '-of-' + cons.nodes + ' to commit &middot; height ' + cons.height +
+        '</dd></dl><div class="nodes">';
+      for (let i = 0; i < cons.nodes; i++){
+        const diverged = cons.diverged.indexOf(i) >= 0;
+        const invalid  = cons.valid.indexOf(i) < 0;
+        const bad = diverged || invalid;
+        html += '<div class="node' + (bad ? ' bad' : '') + '"><b>validator ' + i + '</b><span>' +
+          (bad ? (invalid ? 'signature check failed' : 'diverged') : 'in agreement') +
+          '</span><code>' + esc(String(cons.node_heads[i]).slice(0, 16)) + '…</code></div>';
+      }
+      html += '</div><ul class="checks">' +
+        '<li class="' + (cons.diverged.length ? 'no' : 'ok') + '">' +
+        (cons.diverged.length ? '✗' : '✓') + ' all replicas hold the same state root' +
+        (cons.diverged.length ? ' — validator ' + cons.diverged.join(', ') + ' does not' : '') +
+        '</li><li class="' + (cons.honest_majority ? 'ok' : 'no') + '">' +
+        (cons.honest_majority ? '✓' : '✗') + ' ' +
+        (cons.honest_majority
+          ? 'an honest quorum still stands: one compromised validator changes nothing'
+          : 'the honest quorum is gone — this ledger can no longer be trusted') +
+        '</li><li class="' + (cons.committed ? 'ok' : 'no') + '">' +
+        (cons.committed ? '✓' : '✗') + ' latest block carries ' + cons.quorum + '-of-' +
+        cons.nodes + ' validator signatures</li>';
+      (cons.problems || []).slice(0, 3).forEach(function (pr){
+        html += '<li class="no">&nbsp;&nbsp;&nbsp;' + esc(pr) + '</li>';
+      });
+      html += '</ul>';
+    }
+
     html += '<ul class="checks"><li class="' + (chain.ok ? 'ok' : 'no') + '">' +
-      (chain.ok ? '✓' : '✗') + ' hash chain over ' + d.entries + ' entries ' +
+      (chain.ok ? '✓' : '✗') + ' local hash chain over ' + d.entries + ' entries ' +
       (chain.ok ? 'intact' : '<strong>BROKEN at seq ' + chain.first_bad_seq + '</strong>') + '</li>';
     (chain.problems || []).slice(0, 4).forEach(p => {
       html += '<li class="no">&nbsp;&nbsp;&nbsp;' + esc(p) + '</li>';
@@ -831,7 +906,12 @@ async function audit(action, seq){
     $('oAudit').innerHTML = html;
     complete(4);
 
-    if (action === 'tamper'){
+    if (action === 'compromise'){
+      orb.flash('bad');
+      say('Out-voted',
+          'Validator ' + d.changed.node + ' was captured and its copy rewritten. Its state root moved, ' +
+          'its own signature check fails, and the others still make quorum without it.');
+    } else if (action === 'tamper'){
       orb.flash('bad');
       say('Caught', 'One field changed, and the chain, the recipient’s signature and the witnessed Merkle root all stop agreeing at once.');
     } else if (chain.ok){
@@ -846,6 +926,7 @@ async function audit(action, seq){
 }
 $('bAudit').onclick = () => audit('verify');
 $('bTamper').onclick = () => audit('tamper', 0);
+$('bCompromise').onclick = () => audit('compromise', 0);
 $('bRestore').onclick = () => audit('restore');
 
 /* ------------------------------------------------------------------- kick off */
