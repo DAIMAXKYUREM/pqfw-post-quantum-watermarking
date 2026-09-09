@@ -403,8 +403,18 @@ def api_audit(
             changed = workflow.tamper(store, int(payload.get("seq", 0)))
         except IndexError as exc:
             raise HTTPException(400, str(exc)) from exc
+    elif action == "compromise":
+        try:
+            changed = workflow.compromise_validator(
+                store, int(payload.get("node", 1)), int(payload.get("seq", 0))
+            )
+        except (IndexError, ValueError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+    elif action == "heal":
+        changed = workflow.heal_validators(store)
     elif action == "restore":
         changed = {"restored": workflow.restore(store)}
+        workflow.heal_validators(store)
     elif action == "checkpoint":
         cp = workflow.checkpoint(store)
         changed = {"checkpoint": cp.index if cp else None}

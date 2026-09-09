@@ -247,6 +247,13 @@ def open_as(store: Store, doc_id: str, recipient_id: str) -> OpenResult:
     entry_hash = ledger.append(receipt, signature, device["sig_pk"])
     store.save_ledger(ledger)
 
+    # ... and to the replicated ledger, where a quorum of validators must each
+    # independently verify the recipient's signature before the receipt counts as
+    # recorded at all.
+    network = store.network()
+    network.submit(receipt, signature, device["sig_pk"])
+    store.save_network(network)
+
     record.consumed[session_id] = store.clock.now()
     store.save()
 
@@ -265,7 +272,11 @@ def open_as(store: Store, doc_id: str, recipient_id: str) -> OpenResult:
 
 
 def checkpoint(store: Store, k: int | None = None) -> L.Checkpoint | None:
-    """Cut a witness-signed checkpoint over everything appended since the last one."""
+    """Seal a block on the validator network, and cut the matching local checkpoint."""
+    network = store.network()
+    if network.seal_block() is not None:
+        store.save_network(network)
+
     ledger = store.ledger()
     threshold = k if k is not None else store.state.witness_threshold
     secret_keys = store.witness_secret_keys()
@@ -317,13 +328,28 @@ def audit(store: Store) -> dict[str, Any]:
             }
         )
 
+    try:
+        consensus = store.network().consensus().to_json()
+    except ValueError:
+        consensus = None
+
     return {
         "entries": chain.entries,
         "chain": chain.to_json(),
+        "consensus": consensus,
         "witness_threshold": threshold,
         "witnesses_enrolled": len(witness_pks),
         "checkpoints": checkpoints,
-        "ok": chain.ok and all(c["valid"] and c["root_matches_entries"] for c in checkpoints),
+        # Two different questions, deliberately not merged. "ok" is "nothing is wrong
+        # anywhere", which a single diverged replica makes false. "honest_majority",
+        # reported inside consensus, is "the network still functions" -- and it stays
+        # true through exactly the attack the requirement names. A compromised
+        # validator should show up as degraded, not as fine, and not as fatal either.
+        "ok": (
+            chain.ok
+            and all(c["valid"] and c["root_matches_entries"] for c in checkpoints)
+            and (consensus is None or consensus["ok"])
+        ),
         "algorithms": pqc.alg_report(),
     }
 
@@ -353,6 +379,50 @@ def tamper(store: Store, seq: int, field: str = "doc_hash") -> dict[str, Any]:
         "after": ledger.entries[seq].record[field],
         "backup": str(backup),
     }
+
+
+def compromise_validator(store: Store, node: int, seq: int = 0) -> dict[str, Any]:
+    """Take over one validator and rewrite a receipt inside its replica only.
+
+    This is the attack the requirement names by name -- a single administrator, or a
+    single compromised account. Running it is the point: the node's state root moves,
+    it stops agreeing with the others, its own chain check fails because it cannot
+    forge the recipient's ML-DSA-65 signature, and the remaining validators still make
+    quorum without it.
+    """
+    network = store.network()
+    if not 0 <= node < len(network.nodes):
+        raise IndexError(f"there are {len(network.nodes)} validators; no node {node}")
+    damage = network.corrupt_node(node, seq)
+    store.save_network(network)
+    return {**damage, "consensus": network.consensus().to_json()}
+
+
+def heal_validators(store: Store) -> dict[str, Any]:
+    """Re-sync a compromised replica from the honest majority.
+
+    Recovery, not repair: the tampered entries cannot be mended, because nobody but the
+    recipient can re-sign them. The node is simply given the chain the honest quorum
+    holds, which is what a real operator would do after evicting an intruder.
+    """
+    import copy as _copy
+
+    network = store.network()
+    report = network.consensus()
+    trusted = sorted(set(report.agreeing) & set(report.valid))
+    if not trusted:
+        return {"healed": [], "reason": "no trusted replica to re-sync from"}
+
+    source = network.nodes[trusted[0]]
+    healed = []
+    for node in network.nodes:
+        if node.index in trusted:
+            continue
+        node.ledger = _copy.deepcopy(source.ledger)
+        node.blocks = list(source.blocks)
+        healed.append(node.index)
+    store.save_network(network)
+    return {"healed": healed, "consensus": network.consensus().to_json()}
 
 
 def restore(store: Store) -> bool:

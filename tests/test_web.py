@@ -147,6 +147,51 @@ def test_tamper_then_restore_through_the_api(ready) -> None:
     assert restored["changed"]["restored"] is True
 
 
+def test_two_decryptions_by_one_person_are_distinct_over_the_api(ready) -> None:
+    client, _ = ready
+    first = client.post("/api/open", json={"recipient": "r04"}).json()
+    second = client.post("/api/open", json={"recipient": "r04"}).json()
+
+    assert first["session_id"] != second["session_id"]
+    assert first["doc_hash"] != second["doc_hash"]
+    assert second["sessions_left"] < first["sessions_left"]
+
+    for opened in (first, second):
+        report = client.post("/api/trace-text", json={"leaked": opened["preview"]}).json()
+        assert report["accused"]["recipient_id"] == "r04"
+        assert report["session_id"] == opened["session_id"], "resolves to the right event"
+
+
+def test_the_validator_network_replicates_and_reaches_quorum(ready) -> None:
+    client, _ = ready
+    client.post("/api/open", json={"recipient": "r00"})
+    audit = client.post("/api/audit", json={"action": "verify"}).json()
+
+    consensus = audit["consensus"]
+    assert consensus["nodes"] == 3 and consensus["quorum"] == 2
+    assert consensus["diverged"] == [] and consensus["valid"] == [0, 1, 2]
+    assert consensus["committed"] is True and consensus["ok"] is True
+
+
+def test_compromising_one_validator_is_detected_and_out_voted_over_the_api(ready) -> None:
+    """The requirement in one call: a single compromised account changes nothing."""
+    client, _ = ready
+    client.post("/api/open", json={"recipient": "r01"})
+    client.post("/api/audit", json={"action": "verify"})
+
+    hit = client.post("/api/audit", json={"action": "compromise", "node": 1, "seq": 0}).json()
+    consensus = hit["changed"]["consensus"]
+    assert consensus["diverged"] == [1], "the tampered replica must stand out"
+    assert consensus["valid"] == [0, 2], "and fail its own verification"
+    assert consensus["honest_majority"] is True, "the rest still make quorum"
+    assert hit["ok"] is False
+
+    healed = client.post("/api/audit", json={"action": "heal"}).json()
+    assert healed["changed"]["healed"] == [1]
+    assert healed["consensus"]["ok"] is True
+    assert healed["ok"] is True
+
+
 def test_a_pdf_copy_round_trips_through_upload(ready) -> None:
     client, _ = ready
     assert client.post("/api/protect", json={"document": DOC, "carrier": "pdf-kern"}).status_code == 200

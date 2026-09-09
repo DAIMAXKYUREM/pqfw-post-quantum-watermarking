@@ -251,6 +251,32 @@ class Store:
     def witness_path(self, index: int) -> Path:
         return self.root / "witnesses" / f"w{index:02d}.json"
 
+    @property
+    def dlt_path(self) -> Path:
+        """One file per validator: each node's own replica of the chain."""
+        return self.root / "dlt"
+
+    def network(self):
+        """The permissioned ledger network, loaded from disk.
+
+        The witnesses enrolled at setup are the validators. Each holds a complete,
+        independently verified replica; a receipt is only in the ledger once a quorum
+        of them has accepted it.
+        """
+        from pqfw.dlt import LedgerNetwork
+
+        public = self.witness_public_keys()
+        secret = self.witness_secret_keys()
+        if not public or len(secret) != len(public):
+            raise ValueError("no validators enrolled; run enroll first")
+        net = LedgerNetwork(
+            list(zip(public, secret)), quorum=self.state.witness_threshold, clock=self.clock
+        )
+        return net.load(self.dlt_path)
+
+    def save_network(self, network) -> None:
+        network.save(self.dlt_path)
+
     # -- lifecycle -----------------------------------------------------------
 
     def init(self) -> None:
