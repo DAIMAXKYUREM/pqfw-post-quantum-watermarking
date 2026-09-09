@@ -10,6 +10,4 @@ dist/
 state/
 demo_state/
 *.qr.png
-eval/results/*.png
-!eval/results/.gitkeep
 .env

@@ -66,7 +66,13 @@ class TraceReport:
 
     @property
     def statistically_significant(self) -> bool:
-        return self.accused is not None and self.accused.accusation.p_value < self.alpha
+        """Gated on the provable Chernoff bound, not the Gaussian approximation.
+
+        The Gaussian p-value is reported alongside for comparison, but it understates
+        the tail at these code lengths (see tardos.chernoff_log10_bound), and an
+        accusation may not rest on an optimistic number.
+        """
+        return self.accused is not None and self.accused.accusation.p_bound < self.alpha
 
     @property
     def conclusive(self) -> bool:
@@ -176,7 +182,7 @@ def trace(
     report_kwargs["chain_problems"] = chain.problems
     report_kwargs["checkpoint_required"] = store.state.witness_threshold
 
-    if top is None or top.accusation.p_value >= alpha:
+    if top is None or top.accusation.p_bound >= alpha:
         notes.append(
             "no recipient clears the significance threshold; the ledger checks below "
             "are reported for completeness but identify nobody"

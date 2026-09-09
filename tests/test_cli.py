@@ -129,6 +129,7 @@ def test_open_then_trace_identifies_the_recipient(workspace, capsys) -> None:
 
     assert report["verdict"] == "IDENTIFIED"
     assert report["accused"]["recipient_id"] == "r05"
+    assert report["accused"]["p_bound"] < 1e-6, "gated on the provable bound"
     assert report["accused"]["p_value"] < 1e-6
     assert report["conclusive"] is True
 
@@ -147,7 +148,7 @@ def test_trace_never_reports_an_identification_without_a_p_value(workspace, caps
     report = _json(capsys)
     assert report["verdict"] == "NO IDENTIFICATION"
     assert report["conclusive"] is False
-    assert report["accused"]["p_value"] >= 1e-6, "still reported, with its p-value"
+    assert report["accused"]["p_bound"] >= 1e-6, "still reported, with its bound"
 
 
 def test_audit_tamper_detects_the_corruption_and_restore_undoes_it(workspace, capsys) -> None:
@@ -203,7 +204,8 @@ def test_the_human_readable_output_renders_for_every_command(workspace, capsys) 
     main(["trace", "--doc-id", "note", "--leaked", str(leaked), "--state", str(state)])
     out = capsys.readouterr().out
     assert "IDENTIFIED" in out and "r09" in out
-    assert "p-value" in out and "z-score" in out
+    assert "false-accusation" in out and "z-score" in out
+    assert "provable bound" in out and "Gaussian approximation" in out
     assert "runners-up" in out
 
 

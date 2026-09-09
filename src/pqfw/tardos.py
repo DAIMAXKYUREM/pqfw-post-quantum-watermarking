@@ -119,19 +119,37 @@ class Accusation:
     z_score: float
     """Z_j / sqrt(m_eff): standard deviations above an innocent recipient."""
     p_value: float
-    """Bonferroni-corrected probability that an innocent recipient scores this high."""
+    """Gaussian-approximation tail probability, Bonferroni-corrected over n.
+
+    Reported for reference and comparison. **Not** the number to rely on: the
+    evaluation harness shows it understates the true rate at loose thresholds,
+    because a few extreme-bias slots dominate the sum and the central limit theorem
+    has not taken hold in the tail. See ``chernoff_log10_bound``.
+    """
     log10_p_value: float
     """Carried separately because a strong trace underflows p_value to 0.0."""
+    p_bound: float
+    """Provable upper bound on the false-accusation probability. This is the number
+    the system stands behind, and the one ``accuse`` gates on."""
+    log10_p_bound: float
+    p_bound_exact: bool
+    """False when the bound was not computed for this recipient because a
+    higher-scoring one already failed the gate -- the bound is monotone in the score,
+    so everyone below is provably no more accusable. 1.0 means "not accusable", not
+    "certainly innocent"."""
     m_eff: int
     """Readable slots. The evidence is only as strong as this is large."""
 
-    def to_json(self) -> dict[str, float | int]:
+    def to_json(self) -> dict[str, float | int | bool]:
         return {
             "recipient_index": self.recipient_index,
             "raw_score": self.raw_score,
             "z_score": self.z_score,
             "p_value": self.p_value,
             "log10_p_value": self.log10_p_value,
+            "p_bound": self.p_bound,
+            "log10_p_bound": self.log10_p_bound,
+            "p_bound_exact": self.p_bound_exact,
             "m_eff": self.m_eff,
         }
 
@@ -209,6 +227,18 @@ def as_y(bits: Sequence[int | None] | np.ndarray, m: int) -> np.ndarray:
     slot as 0 would push half the coalition's members towards a negative score and the
     other half towards a positive one, for no reason at all.
     """
+    if isinstance(bits, np.ndarray) and bits.dtype != object:
+        # Fast path. The object loop below is O(m) in Python, and scoring a leak used
+        # to walk it once per recipient.
+        flat = bits.reshape(-1)
+        if flat.shape[0] != m:
+            raise ValueError(f"extracted bit vector has length {flat.shape[0]}, expected {m}")
+        out = flat.astype(np.float64)
+        finite = ~np.isnan(out)
+        if not np.isin(out[finite], (0.0, 1.0)).all():
+            raise ValueError("extracted bits must be 0, 1 or NaN")
+        return out
+
     arr = np.asarray(bits, dtype=object).reshape(-1)
     if arr.shape[0] != m:
         raise ValueError(f"extracted bit vector has length {arr.shape[0]}, expected {m}")
@@ -229,14 +259,15 @@ def as_y(bits: Sequence[int | None] | np.ndarray, m: int) -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 
-def scores(code: TardosCode, y: Sequence[int | None] | np.ndarray) -> np.ndarray:
-    """Symmetric Tardos score for every recipient. Shape (n,).
-
-    Vectorised: one (n, m) x (m,) matrix-vector product, no Python loop over n * m.
-    """
-    yv = as_y(y, code.params.m)
+def sign_vector(yv: np.ndarray) -> np.ndarray:
+    """+1 where the extracted bit is 1, -1 where it is 0, 0 where it is unreadable."""
     readable = ~np.isnan(yv)
+    sign = np.zeros(yv.shape[0], dtype=np.float64)
+    sign[readable] = np.where(yv[readable] == 1.0, 1.0, -1.0)
+    return sign
 
+
+def _scores_from_sign(code: TardosCode, sign: np.ndarray) -> np.ndarray:
     p = code.p
     g1 = np.sqrt((1.0 - p) / p)
     g0 = np.sqrt(p / (1.0 - p))
@@ -246,11 +277,15 @@ def scores(code: TardosCode, y: Sequence[int | None] | np.ndarray) -> np.ndarray
     # For y_i == 0 the whole column flips sign, which is exactly the table in the
     # module docstring, so a single signed weight vector covers both cases.
     contribution_if_one = code.X * g1 - (1 - code.X) * g0
-
-    sign = np.zeros(code.params.m, dtype=np.float64)
-    sign[readable] = np.where(yv[readable] == 1.0, 1.0, -1.0)
-
     return contribution_if_one @ sign
+
+
+def scores(code: TardosCode, y: Sequence[int | None] | np.ndarray) -> np.ndarray:
+    """Symmetric Tardos score for every recipient. Shape (n,).
+
+    Vectorised: one (n, m) x (m,) matrix-vector product, no Python loop over n * m.
+    """
+    return _scores_from_sign(code, sign_vector(as_y(y, code.params.m)))
 
 
 def readable_count(y: Sequence[int | None] | np.ndarray, m: int) -> int:
@@ -275,6 +310,112 @@ def _log10_sf(z: float) -> float:
     ln_tail = -0.5 * z * z - math.log(z * math.sqrt(2.0 * math.pi))
     ln_tail += math.log1p(-1.0 / (z * z) + 3.0 / (z**4))
     return ln_tail / math.log(10.0)
+
+
+class TailBound:
+    """Provable Chernoff bound on an innocent recipient's score, for one leak.
+
+    Why this exists, when there is already a Gaussian p-value
+    --------------------------------------------------------
+    The score is a sum of m independent terms, each with mean 0 and variance 1 -- but
+    not each *small*. A slot whose bias sits near the truncation limit t = 1/(300c)
+    has g1 = sqrt((1-p)/p) of about 27, while the whole sum's standard deviation at
+    m = 800 is only 28. A handful of slots therefore dominate the variance, the central
+    limit theorem has not taken hold in the tail, and the normal approximation
+    *understates* the false-accusation probability. The evaluation harness measures
+    this directly: at alpha = 1e-3 the empirical rate is 2.4e-3.
+
+    Since the entire claim of this project is a stated false-accusation probability, an
+    optimistic one is worse than none. So the number the system stands behind is a
+    Chernoff bound using the exact per-slot moment generating function:
+
+        P(Z >= t) <= min over lambda > 0 of  exp(-lambda*t) * prod_i E[exp(lambda*w_i)]
+
+    Every factor is computed from this code's own biases, exactly, with no asymptotic
+    step anywhere. For an innocent recipient X[j] is independent of y -- they hold no
+    key that could have influenced it -- so conditioning on y is legitimate, which is
+    what makes each per-slot distribution known and the product valid.
+
+    Because the score is bounded, this is not merely valid but *tighter* than the
+    Gaussian tail in the regime that matters: at m = 301 a real leaker's bound comes
+    out near 1e-47 where the Gaussian approximation says 1e-25.
+
+    The per-slot arrays depend only on (p, y), never on which recipient is being
+    scored, so they are built once here and reused for all n.
+    """
+
+    __slots__ = ("_hi", "_lo", "_log_prob_hi", "_log_prob_lo", "_m_eff", "_n", "_max_score")
+
+    def __init__(self, code: TardosCode, yv: np.ndarray) -> None:
+        readable = ~np.isnan(yv)
+        p = code.p[readable]
+        sign = np.where(yv[readable] == 1.0, 1.0, -1.0)
+        g1 = np.sqrt((1.0 - p) / p)
+        g0 = np.sqrt(p / (1.0 - p))
+
+        # Slot i takes value hi with probability p_i, lo with probability 1 - p_i.
+        self._hi = sign * g1
+        self._lo = -sign * g0
+        self._log_prob_hi = np.log(p)
+        self._log_prob_lo = np.log1p(-p)
+        self._m_eff = int(readable.sum())
+        self._n = code.params.n
+        self._max_score = float(np.maximum(self._hi, self._lo).sum())
+
+    @property
+    def m_eff(self) -> int:
+        return self._m_eff
+
+    def _log_tail(self, lam: float, threshold: float) -> float:
+        # log-sum-exp per slot, so a lambda*g1 of a few hundred cannot overflow
+        a = lam * self._hi + self._log_prob_hi
+        b = lam * self._lo + self._log_prob_lo
+        peak = np.maximum(a, b)
+        log_mgf = peak + np.log(np.exp(a - peak) + np.exp(b - peak))
+        return float(-lam * threshold + log_mgf.sum())
+
+    def log10_bound(self, threshold: float, refine: bool = True) -> float:
+        """log10 of the bound, Bonferroni-corrected over all n recipients.
+
+        Any single lambda > 0 already yields a *valid* bound, so the cheap path
+        evaluates one well-chosen lambda and only pays for the minimisation when the
+        answer is close enough to an accusation threshold to be worth tightening. That
+        keeps ranking a thousand recipients affordable without ever quoting a number
+        the bound does not support.
+        """
+        if self._m_eff == 0 or threshold <= 0.0:
+            return 0.0
+        if threshold > self._max_score:
+            return -math.inf  # unreachable even if every slot went the same way
+
+        correction = math.log(self._n)
+        # For a sum of unit-variance terms the optimal lambda sits near t / variance.
+        seed = max(threshold / self._m_eff, 1e-9)
+        best = self._log_tail(seed, threshold)
+        if not refine:
+            return min(0.0, (best + correction) / math.log(10.0))
+
+        # _log_tail is convex in lambda: bracket around the seed, then ternary search.
+        lo, hi = seed / 64.0, seed * 64.0
+        for _ in range(80):
+            a = lo + (hi - lo) / 3.0
+            b = hi - (hi - lo) / 3.0
+            if self._log_tail(a, threshold) < self._log_tail(b, threshold):
+                hi = b
+            else:
+                lo = a
+        best = min(best, self._log_tail((lo + hi) / 2.0, threshold))
+        return min(0.0, (best + correction) / math.log(10.0))
+
+
+def chernoff_log10_bound(
+    code: TardosCode,
+    y: Sequence[int | None] | np.ndarray,
+    threshold: float,
+    refine: bool = True,
+) -> float:
+    """One-shot convenience wrapper around :class:`TailBound`."""
+    return TailBound(code, as_y(y, code.params.m)).log10_bound(threshold, refine=refine)
 
 
 def p_value_for_z(z: float, n: int) -> float:
@@ -318,27 +459,63 @@ def achievable_eps(code: TardosCode) -> float:
     return p_value_for_z(z, code.params.n)
 
 
-def rank(code: TardosCode, y: Sequence[int | None] | np.ndarray) -> list[Accusation]:
+BOUND_GATE = 1e-3
+"""Stop computing exact bounds once one exceeds this.
+
+The Chernoff bound is monotone decreasing in the score, so once a recipient's bound
+crosses the gate, every lower-scoring recipient's bound is provably no better. This
+keeps ranking 1000 recipients cheap without weakening any accusation: no alpha worth
+accusing at is anywhere near 1e-3.
+"""
+
+
+def rank(
+    code: TardosCode,
+    y: Sequence[int | None] | np.ndarray,
+    bound_gate: float = BOUND_GATE,
+    always_bound: int = 5,
+) -> list[Accusation]:
     """Every recipient scored and sorted, most suspicious first.
 
     Tracing reports the runners-up alongside the accused: a top score that is barely
     above the second is a different kind of evidence from one that is ten sigma clear,
     and hiding that would be dishonest.
     """
-    raw = scores(code, y)
-    m_eff = readable_count(y, code.params.m)
+    yv = as_y(y, code.params.m)
+    sign = sign_vector(yv)
+    raw = _scores_from_sign(code, sign)
+    tail = TailBound(code, yv)
+    m_eff = tail.m_eff
     n = code.params.n
+    order = np.argsort(-raw)
+    log10_gate = math.log10(bound_gate)
 
     out: list[Accusation] = []
-    for j in range(n):
+    still_computing = m_eff > 0
+    for position, j_np in enumerate(order):
+        j = int(j_np)
         raw_j = float(raw[j])
         if m_eff == 0:
-            z = 0.0
-            pv, log10_pv = 1.0, 0.0
+            z, pv, log10_pv = 0.0, 1.0, 0.0
         else:
             z = raw_j / math.sqrt(m_eff)
             pv = p_value_for_z(z, n)
             log10_pv = log10_p_value_for_z(z, n)
+
+        want_bound = m_eff > 0 and (still_computing or position < always_bound)
+        if want_bound:
+            # A cheap single-lambda bound is already valid; refine only when the answer
+            # is close enough to an accusation threshold for tightness to matter.
+            coarse = tail.log10_bound(raw_j, refine=False)
+            if coarse > log10_gate:
+                still_computing = False
+                log10_bound = coarse
+            else:
+                log10_bound = tail.log10_bound(raw_j, refine=True)
+            bound = 10.0**log10_bound if log10_bound > -300 else 0.0
+        else:
+            bound, log10_bound = 1.0, 0.0
+
         out.append(
             Accusation(
                 recipient_index=j,
@@ -346,23 +523,29 @@ def rank(code: TardosCode, y: Sequence[int | None] | np.ndarray) -> list[Accusat
                 z_score=z,
                 p_value=pv,
                 log10_p_value=log10_pv,
+                p_bound=bound,
+                log10_p_bound=log10_bound,
+                p_bound_exact=want_bound,
                 m_eff=m_eff,
             )
         )
-    out.sort(key=lambda a: a.raw_score, reverse=True)
     return out
 
 
 def accuse(
     code: TardosCode, y: Sequence[int | None] | np.ndarray, alpha: float = 1e-6
 ) -> list[Accusation]:
-    """Only the recipients whose corrected p-value clears alpha, strongest first.
+    """Only the recipients whose *provable* false-accusation bound clears alpha.
+
+    Gated on ``p_bound``, not on the Gaussian ``p_value``. The Gaussian tail is not
+    conservative here -- measured, not suspected -- and a system whose single claim is
+    a stated false-accusation probability may not quote an optimistic one.
 
     An empty list is a legitimate and common answer. It means the leaked copy does not
-    carry enough evidence to name anybody at the confidence asked for -- not that the
+    carry enough evidence to name anybody at the confidence asked for, not that the
     document was never fingerprinted.
     """
-    return [a for a in rank(code, y) if a.p_value < alpha]
+    return [a for a in rank(code, y) if a.p_bound < alpha]
 
 
 # ---------------------------------------------------------------------------

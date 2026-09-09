@@ -267,17 +267,16 @@ def cmd_trace(args: argparse.Namespace) -> int:
     headline = f"{bold(report.accused.recipient_id)}"
     print(f"  {'best match'.ljust(22)} {headline}")
     field("z-score", f"{a.z_score:.2f} sigma")
-    field("p-value", fmt_p(a.p_value, a.log10_p_value))
+    field("false-accusation", bold(fmt_p(a.p_bound, a.log10_p_bound)) + "   provable bound")
+    field("", dim(fmt_p(a.p_value, a.log10_p_value) + "   Gaussian approximation, for reference"))
     field("raw score", f"{a.raw_score:.1f}")
     print()
 
     print("  " + dim("runners-up"))
     for suspect in report.runners_up:
         b = suspect.accusation
-        print(
-            f"    {suspect.recipient_id.ljust(8)} z={b.z_score:7.2f}   "
-            f"p={fmt_p(b.p_value, b.log10_p_value)}"
-        )
+        bound = fmt_p(b.p_bound, b.log10_p_bound) if b.p_bound_exact else "not accusable"
+        print(f"    {suspect.recipient_id.ljust(8)} z={b.z_score:7.2f}   bound={bound}")
     print()
 
     print("  " + dim("corroboration"))
@@ -297,7 +296,7 @@ def cmd_trace(args: argparse.Namespace) -> int:
         print(
             "  "
             + green(bold(f"IDENTIFIED  {ARROW}  {report.accused.recipient_id}"))
-            + f"   false-accusation probability {fmt_p(a.p_value, a.log10_p_value)}"
+            + f"   false-accusation probability at most {fmt_p(a.p_bound, a.log10_p_bound)}"
         )
     elif report.statistically_significant:
         print("  " + yellow(bold("UNCORROBORATED")))

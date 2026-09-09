@@ -124,9 +124,10 @@ def test_collusion_is_traced(strategy: str) -> None:
     for _ in range(trials):
         coalition = rng.choice(50, size=coalition_size, replace=False)
         y = tardos.collude(code.X[coalition], strategy, rng)
-        ranked = tardos.rank(code, y)
-        top = {a.recipient_index for a in ranked[:top_k]}
-        hits += bool(top & set(int(j) for j in coalition))
+        # scores() rather than rank(): this test is about the ordering, and rank() also
+        # minimises a Chernoff bound per candidate, which 200 trials do not need.
+        top = set(np.argsort(-tardos.scores(code, y))[:top_k].tolist())
+        hits += bool(top & {int(j) for j in coalition})
     assert hits / trials >= 0.95
 
 
@@ -176,6 +177,103 @@ def test_log10_p_value_survives_underflow() -> None:
         math.log10(tardos.p_value_for_z(5.0, 100)),
         rel_tol=1e-6,
     )
+
+
+# ---------------------------------------------------------------------------
+# the provable bound
+# ---------------------------------------------------------------------------
+
+
+def test_the_gaussian_tail_is_not_conservative_here() -> None:
+    """The measurement that justifies having a second, provable bound at all.
+
+    A slot at the truncation limit contributes up to sqrt((1-t)/t) ~ 27 while the whole
+    score's standard deviation at m=800 is 28. A few slots dominate, the CLT has not
+    taken hold in the tail, and the normal approximation understates it.
+    """
+    m, n = 800, 100
+    code = tardos.generate(_params(m=m, n=n), np.random.default_rng(3000))
+    g1 = np.sqrt((1 - code.p) / code.p)
+    assert g1.max() > 0.7 * math.sqrt(m), "a single slot rivals the whole standard deviation"
+
+    rng = np.random.default_rng(3001)
+    trials = 4000
+    Y = (rng.random((trials, m)) < code.p).astype(np.uint8)
+    best = np.array([tardos.scores(code, Y[t]).max() for t in range(trials)])
+
+    threshold = float(np.quantile(best, 0.99))
+    empirical = float((best >= threshold).mean())
+    gaussian = tardos.p_value_for_z(threshold / math.sqrt(m), n)
+    assert gaussian < empirical, "the Gaussian p-value understates the measured tail"
+
+
+def test_the_provable_bound_holds_where_the_gaussian_does_not() -> None:
+    m, n = 800, 100
+    code = tardos.generate(_params(m=m, n=n), np.random.default_rng(3000))
+    rng = np.random.default_rng(3002)
+    trials = 4000
+    Y = (rng.random((trials, m)) < code.p).astype(np.uint8)
+    best = np.array([tardos.scores(code, Y[t]).max() for t in range(trials)])
+
+    for quantile in (0.9, 0.99, 0.999):
+        threshold = float(np.quantile(best, quantile))
+        empirical = float((best >= threshold).mean())
+        bound = 10.0 ** tardos.chernoff_log10_bound(code, Y[0], threshold)
+        assert bound >= empirical, (
+            f"the bound must never sit below the measured rate at q={quantile}: "
+            f"{bound:.5f} < {empirical:.5f}"
+        )
+
+
+def test_the_bound_is_tighter_than_the_gaussian_for_a_real_leaker() -> None:
+    """Not merely valid: because the score is bounded, the Chernoff bound beats the
+    Gaussian tail in the far regime, which is exactly the regime an accusation lives
+    in. So using the rigorous number costs nothing."""
+    code = tardos.generate(_params(m=301, n=100), np.random.default_rng(7))
+    y = code.X[3]
+    raw = float(tardos.scores(code, y)[3])
+    gaussian = tardos.log10_p_value_for_z(raw / math.sqrt(301), 100)
+    bound = tardos.chernoff_log10_bound(code, y, raw)
+    assert bound < gaussian
+
+
+def test_the_bound_is_monotone_in_the_score() -> None:
+    """Required for rank()'s early stop to be sound: once a bound fails the gate,
+    every lower-scoring recipient's bound is provably no better."""
+    code = tardos.generate(_params(m=400, n=50), np.random.default_rng(81))
+    y = code.X[9]
+    tail = tardos.TailBound(code, tardos.as_y(y, 400))
+    thresholds = [10.0, 50.0, 100.0, 150.0, 200.0]
+    bounds = [tail.log10_bound(t) for t in thresholds]
+    assert bounds == sorted(bounds, reverse=True)
+
+
+def test_a_single_lambda_is_already_a_valid_bound() -> None:
+    """The cheap path used while ranking. Looser than the minimised one, never wrong."""
+    code = tardos.generate(_params(m=400, n=50), np.random.default_rng(82))
+    y = code.X[2]
+    raw = float(tardos.scores(code, y)[2])
+    coarse = tardos.chernoff_log10_bound(code, y, raw, refine=False)
+    refined = tardos.chernoff_log10_bound(code, y, raw, refine=True)
+    assert refined <= coarse <= 0.0
+
+
+def test_accuse_gates_on_the_bound_not_the_gaussian() -> None:
+    code = tardos.generate(_params(m=400, n=50), np.random.default_rng(83))
+    y = code.X[11]
+    accusations = tardos.accuse(code, y, alpha=1e-6)
+    assert accusations[0].recipient_index == 11
+    assert accusations[0].p_bound < 1e-6
+    assert accusations[0].p_bound_exact is True
+
+
+def test_recipients_below_the_gate_are_marked_inexact_not_exonerated() -> None:
+    code = tardos.generate(_params(m=400, n=60), np.random.default_rng(84))
+    ranked = tardos.rank(code, code.X[5])
+    assert ranked[0].p_bound_exact is True
+    tail = [a for a in ranked if not a.p_bound_exact]
+    assert tail, "with 60 recipients the early stop must engage"
+    assert all(a.p_bound == 1.0 for a in tail)
 
 
 def test_scores_rejects_wrong_length_y() -> None:
