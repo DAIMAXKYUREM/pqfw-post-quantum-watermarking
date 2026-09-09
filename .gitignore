@@ -13,3 +13,4 @@ demo_state/
 .env
 deploy/.space/
 deploy/.static/
+demo/leaked.*
