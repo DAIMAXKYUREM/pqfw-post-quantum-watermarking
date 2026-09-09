@@ -3,332 +3,575 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
 <title>PQFW — Post-Quantum Forensic Watermarking</title>
 <style>
-  :root {
-    --bg: #0e1116; --panel: #161b22; --panel2: #1c232c; --line: #2a3341;
-    --ink: #e6edf3; --dim: #8b98a5; --accent: #58a6ff; --good: #3fb950;
-    --bad: #f85149; --warn: #d29922; --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  :root{
+    --void:#05060b; --ink:#eef2fb; --dim:#9aa6c2; --faint:#636f8c;
+    --line:rgba(255,255,255,.09); --line2:rgba(255,255,255,.05);
+    --glass:rgba(255,255,255,.04); --glass2:rgba(255,255,255,.07);
+    --accent:#8b9dff; --good:#4ade80; --bad:#fb7185; --warn:#fbbf24;
+    --mono:"SF Mono",ui-monospace,SFMono-Regular,"JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
   }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; background: var(--bg); color: var(--ink);
-    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--void);color:var(--ink);font:15px/1.6 var(--sans);
+    -webkit-font-smoothing:antialiased;min-height:100vh;overflow-x:hidden}
+
+  /* ---------------------------------------------------- drifting aurora field */
+  .aurora{position:fixed;inset:-25vmax;z-index:0;pointer-events:none;
+    filter:blur(80px) saturate(155%);opacity:.85}
+  .aurora i{position:absolute;display:block;border-radius:50%;mix-blend-mode:screen}
+  .a1{width:62vmax;height:62vmax;left:-16%;top:-16%;
+    background:radial-gradient(circle at 30% 30%,#4338ca,transparent 68%);
+    animation:d1 26s ease-in-out infinite alternate}
+  .a2{width:56vmax;height:56vmax;right:-18%;top:-4%;
+    background:radial-gradient(circle at 60% 40%,#a21caf,transparent 66%);
+    animation:d2 32s ease-in-out infinite alternate}
+  .a3{width:54vmax;height:54vmax;left:8%;bottom:-22%;
+    background:radial-gradient(circle at 50% 50%,#0e7490,transparent 66%);
+    animation:d3 29s ease-in-out infinite alternate}
+  .a4{width:44vmax;height:44vmax;right:-4%;bottom:-18%;
+    background:radial-gradient(circle at 50% 50%,#b45309,transparent 64%);
+    animation:d4 37s ease-in-out infinite alternate}
+  @keyframes d1{to{transform:translate3d(9vmax,7vmax,0) scale(1.16)}}
+  @keyframes d2{to{transform:translate3d(-11vmax,9vmax,0) scale(1.1)}}
+  @keyframes d3{to{transform:translate3d(8vmax,-8vmax,0) scale(1.2)}}
+  @keyframes d4{to{transform:translate3d(-7vmax,-6vmax,0) scale(1.14)}}
+  .veil{position:fixed;inset:0;z-index:1;pointer-events:none;
+    background:radial-gradient(150% 100% at 50% -10%,transparent 0%,rgba(5,6,11,.3) 48%,rgba(5,6,11,.66) 100%)}
+  .grain{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.05;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E")}
+
+  /* ------------------------------------------------------------------- shell */
+  .shell{position:relative;z-index:2;max-width:1120px;margin:0 auto;padding:22px 26px 70px}
+  .top{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap}
+  .brand{display:flex;align-items:baseline;gap:11px}
+  .brand b{font-size:17px;font-weight:660;letter-spacing:-.02em}
+  .brand span{font-size:12px;color:var(--faint)}
+  .algs{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
+  .chip{font:10px/1 var(--mono);padding:7px 10px;border-radius:8px;background:var(--glass);
+    border:1px solid var(--line);color:var(--faint);backdrop-filter:blur(12px)}
+  .chip b{color:#cbd5f5;font-weight:600}
+
+  /* ---------------------------------------------------------------- step rail */
+  .rail{display:flex;align-items:center;justify-content:center;margin:26px 0 4px}
+  .bead{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;
+    font:600 12px/1 var(--mono);color:var(--faint);background:rgba(255,255,255,.04);
+    border:1px solid var(--line);transition:.35s;cursor:pointer;flex:0 0 30px;padding:0}
+  .bead:hover{border-color:rgba(139,157,255,.45);color:#c7d2fe;transform:none}
+  .bead.on{color:#fff;border-color:rgba(139,157,255,.75);
+    background:linear-gradient(150deg,#5b5bd6,#a855f7);
+    box-shadow:0 0 22px -4px rgba(139,92,246,.85)}
+  .bead.done{color:var(--good);border-color:rgba(74,222,128,.45);background:rgba(74,222,128,.12)}
+  .link{width:clamp(18px,5vw,54px);height:1px;background:var(--line);flex:0 0 auto}
+  .link.done{background:linear-gradient(90deg,rgba(74,222,128,.6),rgba(74,222,128,.2))}
+
+  /* --------------------------------------------------------------------- orb */
+  .stage{display:grid;place-items:center;padding:12px 0 2px}
+  #orb{width:min(340px,72vw);height:min(340px,72vw);display:block;cursor:crosshair;
+    filter:drop-shadow(0 18px 60px rgba(99,102,241,.32))}
+  .say{text-align:center;max-width:66ch;margin:2px auto 0;min-height:88px;padding:0 10px}
+  .say h2{margin:0 0 8px;font-size:clamp(20px,3.1vw,29px);font-weight:640;
+    letter-spacing:-.03em;line-height:1.15;
+    background:linear-gradient(103deg,#c7d2fe 6%,#e9a8fc 52%,#fcd34d 98%);
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .say p{margin:0;color:var(--dim);font-size:14.5px;line-height:1.6}
+  .caret{display:inline-block;width:7px;height:1.05em;vertical-align:-2px;margin-left:2px;
+    background:var(--accent);animation:blink 1s steps(1) infinite}
+  @keyframes blink{50%{opacity:0}}
+
+  /* ------------------------------------------------------------------- panel */
+  .panel{background:linear-gradient(168deg,var(--glass2),var(--glass));
+    border:1px solid var(--line);border-radius:18px;padding:24px 26px;margin:22px auto 0;
+    max-width:880px;backdrop-filter:blur(22px);
+    box-shadow:0 1px 0 rgba(255,255,255,.05) inset,0 26px 70px -34px rgba(0,0,0,.9)}
+  .step{display:none;animation:in .4s cubic-bezier(.2,.8,.2,1)}
+  .step.live{display:block}
+  @keyframes in{from{opacity:0;transform:translateY(10px)}}
+
+  .row{display:flex;flex-wrap:wrap;gap:11px;align-items:center}
+  .field{display:inline-flex;align-items:center;gap:9px;white-space:nowrap}
+  label{font-size:11px;color:var(--faint);letter-spacing:.09em;text-transform:uppercase}
+  input,select,textarea,button{font-family:inherit;font-size:14px;color:var(--ink);
+    background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:10px;
+    padding:9px 13px;transition:.2s;outline:none}
+  input:focus,select:focus,textarea:focus{border-color:rgba(139,157,255,.55);
+    box-shadow:0 0 0 3px rgba(99,102,241,.14)}
+  select{cursor:pointer}select option{background:#12141d}
+  input[type=number]{width:78px}
+  input[type=file]{font-size:12px;color:var(--dim);padding:7px 10px;max-width:190px}
+  textarea{width:100%;min-height:132px;font:12.5px/1.6 var(--mono);resize:vertical;
+    margin-top:14px;color:#c6d0e4;background:rgba(0,0,0,.3)}
+  button{cursor:pointer;font-weight:550;background:rgba(255,255,255,.06);
+    border-color:rgba(255,255,255,.13);padding:9px 17px}
+  button:hover:not(:disabled){background:rgba(255,255,255,.11);transform:translateY(-1px)}
+  button:disabled{opacity:.42;cursor:not-allowed}
+  button.primary{background:linear-gradient(135deg,#5b5bd6,#8b5cf6 58%,#a855f7);
+    border-color:rgba(168,85,247,.5);color:#fff;box-shadow:0 6px 22px -8px rgba(139,92,246,.75)}
+  button.primary:hover:not(:disabled){filter:brightness(1.12)}
+  button.danger{background:rgba(251,113,133,.14);border-color:rgba(251,113,133,.34);color:#fda4af}
+  .spin{display:inline-block;width:11px;height:11px;border:2px solid rgba(255,255,255,.28);
+    border-top-color:#fff;border-radius:50%;animation:sp .65s linear infinite;
+    vertical-align:-1px;margin-right:6px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  .out{margin-top:20px}
+  .out:empty{margin:0}
+  .kv{display:grid;grid-template-columns:max-content 1fr;gap:7px 22px;font-size:13.5px}
+  .kv dt{color:var(--faint)}
+  .kv dd{margin:0;font-family:var(--mono);font-size:12.5px;word-break:break-all;color:#cdd6e8}
+  .note{font-size:12.5px;color:var(--faint);border-left:2px solid rgba(139,157,255,.3);
+    padding-left:14px;margin-top:15px;line-height:1.62}
+  .warnbox{background:linear-gradient(150deg,rgba(251,191,36,.11),rgba(251,191,36,.04));
+    border:1px solid rgba(251,191,36,.26);color:#f3dda3;border-radius:12px;
+    padding:13px 15px;font-size:13px;margin-top:15px;line-height:1.6}
+  .warnbox strong{color:#fde68a}
+  .verdict{border-radius:14px;padding:18px 20px;margin-top:16px;border:1px solid;
+    animation:in .45s cubic-bezier(.2,.8,.2,1)}
+  .verdict.id{background:linear-gradient(150deg,rgba(74,222,128,.13),rgba(74,222,128,.03));
+    border-color:rgba(74,222,128,.34);box-shadow:0 0 48px -18px rgba(74,222,128,.55)}
+  .verdict.no{background:linear-gradient(150deg,rgba(251,113,133,.13),rgba(251,113,133,.03));
+    border-color:rgba(251,113,133,.34);box-shadow:0 0 48px -18px rgba(251,113,133,.5)}
+  .verdict.un{background:linear-gradient(150deg,rgba(251,191,36,.13),rgba(251,191,36,.03));
+    border-color:rgba(251,191,36,.34);box-shadow:0 0 48px -18px rgba(251,191,36,.5)}
+  .verdict h3{margin:0 0 6px;font-size:19px;font-weight:650;letter-spacing:-.02em}
+  .verdict.id h3{color:#86efac}.verdict.no h3{color:#fda4af}.verdict.un h3{color:#fcd34d}
+  .checks{list-style:none;padding:0;margin:14px 0 0;font-size:13.5px}
+  .checks li{padding:3px 0;line-height:1.5}
+  .ok{color:var(--good)}.no{color:var(--bad)}.wa{color:var(--warn)}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:15px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line2)}
+  th{color:var(--faint);font-weight:500;font-size:10.5px;text-transform:uppercase;letter-spacing:.1em}
+  tr:last-child td{border-bottom:none}
+  tr:hover td{background:rgba(255,255,255,.022)}
+  td.mono,th.mono{font-family:var(--mono);font-size:12px}
+  .pill{font:10px/1 var(--mono);padding:5px 8px;border-radius:6px;
+    background:rgba(139,157,255,.16);border:1px solid rgba(139,157,255,.28);color:#c7d2fe}
+  .zwsp{background:linear-gradient(180deg,rgba(139,157,255,.45),rgba(192,132,252,.32));
+    outline:1px solid rgba(139,157,255,.7);border-radius:2px}
+  .err{color:var(--bad);font-size:13px;margin-top:12px;background:rgba(251,113,133,.09);
+    border:1px solid rgba(251,113,133,.24);border-radius:10px;padding:11px 14px}
+  code{font-family:var(--mono);font-size:12.5px;background:rgba(255,255,255,.06);
+    padding:2px 6px;border-radius:5px;color:#cbd5ff}
+
+  .nav{display:flex;justify-content:space-between;align-items:center;gap:14px;
+    max-width:880px;margin:18px auto 0}
+  .ghost{background:transparent;border-color:transparent;color:var(--faint)}
+  .ghost:hover:not(:disabled){background:rgba(255,255,255,.06);color:var(--ink)}
+  .limits{max-width:880px;margin:34px auto 0;color:var(--faint);font-size:12.5px;
+    line-height:1.68;border-top:1px solid var(--line);padding-top:18px}
+  .limits strong{color:#b9c3da}
+
+  @media (prefers-reduced-motion:reduce){.aurora i{animation:none}}
+  @media(max-width:700px){
+    .shell{padding:16px 16px 60px}
+    .algs{justify-content:flex-start}
+    .panel{padding:20px 17px}
+    #orb{width:min(268px,78vw);height:min(268px,78vw)}
   }
-  a { color: var(--accent); }
-  header {
-    padding: 34px 24px 26px; border-bottom: 1px solid var(--line);
-    background: linear-gradient(180deg, #131922, #0e1116);
-  }
-  .wrap { max-width: 1040px; margin: 0 auto; }
-  h1 { margin: 0 0 6px; font-size: 25px; letter-spacing: -0.2px; }
-  h1 span { color: var(--dim); font-weight: 400; }
-  .sub { color: var(--dim); max-width: 74ch; margin: 0 0 16px; }
-  .algs { display: flex; flex-wrap: wrap; gap: 7px; }
-  .chip {
-    font: 11px/1 var(--mono); padding: 6px 9px; border-radius: 999px;
-    background: #1b2430; border: 1px solid var(--line); color: var(--dim);
-  }
-  .chip b { color: var(--ink); font-weight: 600; }
-  main { padding: 26px 24px 80px; }
-  section {
-    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
-    padding: 20px 22px; margin-bottom: 18px;
-  }
-  section.off { opacity: 0.45; pointer-events: none; }
-  h2 { margin: 0 0 4px; font-size: 16px; display: flex; align-items: center; gap: 10px; }
-  .num {
-    width: 24px; height: 24px; flex: 0 0 24px; border-radius: 50%; background: #21313f;
-    color: var(--accent); font: 600 12px/24px var(--mono); text-align: center;
-  }
-  .why { color: var(--dim); font-size: 13.5px; margin: 0 0 14px 34px; max-width: 82ch; }
-  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-left: 34px; }
-  label { font-size: 13px; color: var(--dim); }
-  input, select, textarea, button {
-    font-family: inherit; font-size: 14px; color: var(--ink);
-    background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px;
-  }
-  textarea { width: 100%; min-height: 130px; font: 12.5px/1.5 var(--mono); resize: vertical; }
-  input[type=number] { width: 78px; }
-  button {
-    cursor: pointer; background: #21313f; border-color: #2f4356; color: var(--ink); font-weight: 500;
-  }
-  button:hover:not(:disabled) { background: #2b3f52; }
-  button:disabled { opacity: 0.5; cursor: not-allowed; }
-  button.primary { background: #1f6feb; border-color: #388bfd; }
-  button.primary:hover:not(:disabled) { background: #2b7ef5; }
-  button.danger { background: #4a1f1f; border-color: #6e2a2a; }
-  .out { margin: 14px 0 0 34px; }
-  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; font-size: 13.5px; }
-  .kv dt { color: var(--dim); }
-  .kv dd { margin: 0; font-family: var(--mono); font-size: 12.5px; word-break: break-all; }
-  .note {
-    font-size: 12.5px; color: var(--dim); border-left: 2px solid var(--line);
-    padding-left: 11px; margin-top: 12px;
-  }
-  .warnbox {
-    background: #2a2110; border: 1px solid #4a3a12; color: #e8d6a8;
-    border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-top: 12px;
-  }
-  .verdict { border-radius: 10px; padding: 14px 16px; margin-top: 14px; border: 1px solid; }
-  .verdict.id { background: #10261a; border-color: #2a6b3c; }
-  .verdict.no { background: #2a1414; border-color: #6e2a2a; }
-  .verdict.un { background: #2a2110; border-color: #6b5320; }
-  .verdict h3 { margin: 0 0 4px; font-size: 17px; }
-  .checks { list-style: none; padding: 0; margin: 12px 0 0; font-size: 13.5px; }
-  .checks li { padding: 2px 0; }
-  .ok { color: var(--good); } .no { color: var(--bad); } .wa { color: var(--warn); }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
-  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); }
-  th { color: var(--dim); font-weight: 500; font-size: 12px; }
-  td.mono, th.mono { font-family: var(--mono); font-size: 12px; }
-  .pill { font: 11px/1 var(--mono); padding: 4px 7px; border-radius: 5px; background: #21313f; }
-  .zwsp { background: rgba(88,166,255,0.25); outline: 1px solid var(--accent); }
-  .err { color: var(--bad); font-size: 13px; margin-top: 10px; }
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } .why, .row, .out { margin-left: 0; } }
-  footer { border-top: 1px solid var(--line); padding: 22px 24px 40px; color: var(--dim); font-size: 13px; }
-  code { font-family: var(--mono); font-size: 12.5px; background: #1b2430; padding: 1px 5px; border-radius: 4px; }
-  .spin { display: inline-block; width: 11px; height: 11px; border: 2px solid var(--dim);
-          border-top-color: transparent; border-radius: 50%; animation: sp 0.7s linear infinite; }
-  @keyframes sp { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
-<header><div class="wrap">
-  <h1>PQFW <span>— post-quantum forensic watermarking</span></h1>
-  <p class="sub">
-    One document, encrypted <em>once</em> for every recipient. Each recipient's decryption
-    produces a visually identical but uniquely fingerprinted copy — and the fingerprint is
-    enforced by <strong>which keys they hold</strong>, not by software that politely applies a
-    watermark. A leaked copy traces back to a recipient with a stated false-accusation
-    probability, corroborated by an append-only ledger.
-  </p>
-  <div class="algs" id="algs"><span class="chip">loading…</span></div>
-</div></header>
+<div class="aurora"><i class="a1"></i><i class="a2"></i><i class="a3"></i><i class="a4"></i></div>
+<div class="veil"></div>
+<div class="grain"></div>
 
-<main class="wrap">
+<div class="shell">
 
-  <section id="s1">
-    <h2><span class="num">1</span> Enrol recipients</h2>
-    <p class="why">
-      Each recipient gets an ML-KEM-768 key pair (to receive their key bundle) and an
-      ML-DSA-65 key pair (to sign a receipt when they decrypt). Three independent witnesses
-      are created for ledger checkpoints, two of which must sign for a checkpoint to count.
-    </p>
-    <div class="row">
-      <label for="n">Recipients</label>
-      <input type="number" id="n" value="12" min="2" max="30">
-      <button class="primary" id="bEnroll">Generate keys</button>
-    </div>
-    <div class="out" id="oEnroll"></div>
-  </section>
+  <div class="top">
+    <div class="brand"><b>PQFW</b><span>post-quantum forensic watermarking</span></div>
+    <div class="algs" id="algs"><span class="chip">connecting&hellip;</span></div>
+  </div>
 
-  <section id="s2" class="off">
-    <h2><span class="num">2</span> Protect the document</h2>
-    <p class="why">
-      The document is split into a base body plus <em>m</em> mark slots. Each slot is rendered
-      two ways that look identical, and the two renderings are encrypted under
-      <em>different</em> keys. Both ship to everybody — the ciphertext below is byte-identical
-      for every recipient. Only a ~14 KB wrapped key bundle differs, and it decides which
-      rendering of each slot that person can decrypt.
-    </p>
-    <div class="row" style="margin-bottom:10px">
-      <label for="carrier">Carrier</label>
-      <select id="carrier">
-        <option value="text-zwsp">text — zero-width space in a word gap</option>
-        <option value="pdf-kern">PDF — 8/1000 em inter-word kern</option>
-      </select>
-      <label for="coalition">Coalition size</label>
-      <input type="number" id="coalition" value="3" min="1" max="8">
-      <button class="primary" id="bProtect">Encrypt once, for everyone</button>
-    </div>
-    <textarea id="doc" spellcheck="false"></textarea>
-    <div class="out" id="oProtect"></div>
-  </section>
+  <div class="rail" id="rail"></div>
 
-  <section id="s3" class="off">
-    <h2><span class="num">3</span> Decrypt as one recipient</h2>
-    <p class="why">
-      This runs the recipient's side: ML-KEM decapsulation, unwrap the bundle, decrypt one
-      variant per slot, then sign an ML-DSA-65 receipt that is appended to the hash-chained
-      ledger. The copy they get carries a fingerprint they could not have declined.
-    </p>
-    <div class="row">
-      <label for="who">Recipient</label>
-      <select id="who"></select>
-      <button class="primary" id="bOpen">Decrypt &amp; sign receipt</button>
-      <button id="bProve">Try to decrypt the other variant</button>
-    </div>
-    <div class="out" id="oOpen"></div>
-  </section>
+  <div class="stage"><canvas id="orb" aria-hidden="true"></canvas></div>
 
-  <section id="s4" class="off">
-    <h2><span class="num">4</span> Trace a leak</h2>
-    <p class="why">
-      Paste or upload a leaked copy. The slots are read back, scored against every issued
-      codeword, and the result is reported with a <strong>provable</strong> upper bound on the
-      probability that an innocent recipient would score this highly — plus the ledger
-      evidence. A trace is only called conclusive when all five checks hold.
-    </p>
-    <div class="row" style="margin-bottom:10px">
-      <button class="primary" id="bTrace">Trace the pasted text</button>
-      <label for="file" style="margin-left:8px">or upload a file</label>
-      <input type="file" id="file">
-      <button id="bTraceFile">Trace the file</button>
-    </div>
-    <textarea id="leak" spellcheck="false" placeholder="Paste a leaked copy here — the copy from step 3 is loaded automatically."></textarea>
-    <div class="row" style="margin-top:10px">
-      <label>Or forge a colluding copy from</label>
-      <select id="c1"></select><select id="c2"></select><select id="c3"></select>
-      <select id="strategy">
-        <option value="majority">majority vote</option>
-        <option value="minority">minority vote</option>
-        <option value="interleaving">interleave</option>
-        <option value="coinflip">coin flip</option>
-        <option value="all_ones">all ones</option>
-      </select>
-      <button id="bCollude">Splice &amp; trace</button>
-    </div>
-    <div class="out" id="oTrace"></div>
-  </section>
+  <div class="say">
+    <h2 id="sayTitle">Post-quantum forensic watermarking</h2>
+    <p id="sayText"></p>
+  </div>
 
-  <section id="s5" class="off">
-    <h2><span class="num">5</span> Audit the ledger</h2>
-    <p class="why">
-      Every decryption is a signed entry in a hash chain, checkpointed by a Merkle root that
-      two of three independent witnesses sign. The ledger stores only a salted
-      <em>commitment</em> to each codeword, never the codeword — so it could be published in
-      full without giving anyone the means to forge or strip a mark. Corrupt an entry and
-      watch what breaks.
-    </p>
-    <div class="row">
-      <button class="primary" id="bAudit">Verify chain &amp; checkpoints</button>
-      <button class="danger" id="bTamper">Corrupt entry 0</button>
-      <button id="bRestore">Restore</button>
-    </div>
-    <div class="out" id="oAudit"></div>
-  </section>
+  <div class="panel">
 
-</main>
+    <section id="s1" class="step live">
+      <div class="row">
+        <span class="field"><label for="n">Recipients</label>
+        <input type="number" id="n" value="12" min="2" max="30"></span>
+        <button class="primary" id="bEnroll">Generate keys</button>
+      </div>
+      <div class="out" id="oEnroll"></div>
+    </section>
 
-<footer class="wrap">
-  <p>
-    Real cryptography, running server-side: <code>liboqs</code> ML-KEM-768 and ML-DSA-65,
-    AES-256-GCM, SHA3-256, and a symmetric Tardos fingerprinting code. Nothing on this page is
-    pre-computed or simulated.
-  </p>
-  <p>
-    <strong>Known limits, stated deliberately.</strong> The text carrier does not survive
-    whitespace normalisation, retyping, OCR, or having a word inserted — the declared threat
-    model is redistribution of the file, a screenshot or a print, not manual reconstruction.
-    The distributor knows every codeword, so the guarantee is <em>traceability</em>, not
-    <em>unframeability</em>; asymmetric fingerprinting needs a post-quantum Paillier
-    substitute that does not yet exist. Every one of these is measured in the project's
-    evaluation harness, including the attacks that win.
-  </p>
-</footer>
+    <section id="s2" class="step">
+      <div class="row">
+        <span class="field"><label for="carrier">Carrier</label>
+        <select id="carrier">
+          <option value="text-zwsp">text &mdash; zero-width space</option>
+          <option value="pdf-kern">PDF &mdash; inter-word kern</option>
+        </select></span>
+        <span class="field"><label for="coalition">Coalition</label>
+        <input type="number" id="coalition" value="3" min="1" max="8"></span>
+        <button class="primary" id="bProtect">Encrypt once, for everyone</button>
+      </div>
+      <textarea id="doc" spellcheck="false"></textarea>
+      <div class="out" id="oProtect"></div>
+    </section>
+
+    <section id="s3" class="step">
+      <div class="row">
+        <span class="field"><label for="who">Recipient</label>
+        <select id="who"></select></span>
+        <button class="primary" id="bOpen">Decrypt &amp; sign receipt</button>
+        <button id="bProve">Try the other variant</button>
+      </div>
+      <div class="out" id="oOpen"></div>
+    </section>
+
+    <section id="s4" class="step">
+      <div class="row">
+        <button class="primary" id="bTrace">Trace the pasted text</button>
+        <span class="field"><label for="file">or a file</label>
+        <input type="file" id="file"></span>
+        <button id="bTraceFile">Trace it</button>
+      </div>
+      <textarea id="leak" spellcheck="false" placeholder="The copy from the previous step loads here automatically."></textarea>
+      <div class="row" style="margin-top:14px">
+        <span class="field"><label>Collude</label></span>
+        <span class="field"><select id="c1"></select><select id="c2"></select><select id="c3"></select></span>
+        <select id="strategy">
+          <option value="majority">majority vote</option>
+          <option value="minority">minority vote</option>
+          <option value="interleaving">interleave</option>
+          <option value="coinflip">coin flip</option>
+          <option value="all_ones">all ones</option>
+        </select>
+        <button id="bCollude">Splice &amp; trace</button>
+      </div>
+      <div class="out" id="oTrace"></div>
+    </section>
+
+    <section id="s5" class="step">
+      <div class="row">
+        <button class="primary" id="bAudit">Verify chain &amp; checkpoints</button>
+        <button class="danger" id="bTamper">Corrupt entry 0</button>
+        <button id="bRestore">Restore</button>
+      </div>
+      <div class="out" id="oAudit"></div>
+    </section>
+
+  </div>
+
+  <div class="nav">
+    <button class="ghost" id="bBack">&larr; Back</button>
+    <button class="ghost" id="bNext">Next &rarr;</button>
+  </div>
+
+  <div class="limits">
+    <strong>Real cryptography, server-side.</strong> liboqs ML-KEM-768 and ML-DSA-65,
+    AES-256-GCM, SHA3-256, and a symmetric Tardos fingerprinting code. Nothing here is
+    pre-computed. <strong>Known limits, stated deliberately:</strong> the text carrier does
+    not survive whitespace normalisation, retyping, OCR, or an inserted word &mdash; the
+    threat model is redistribution of the file, not manual reconstruction. The distributor
+    knows every codeword, so the guarantee is <em>traceability</em>, not
+    <em>unframeability</em>. When an attack wins, the result is a failure to identify
+    &mdash; never the wrong person.
+  </div>
+
+</div>
 
 <script>
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const ZWSP = '​';
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-const SAMPLE = `MINISTRY OF SOCIAL JUSTICE AND EMPOWERMENT
-INTERNAL ASSESSMENT NOTE -- RESTRICTED CIRCULATION
+/* ===================================================================== the orb
+   A closed curve in polar coordinates: r(theta) = 1 + a few sine terms. Layering
+   several with different harmonics and drift speeds gives the organic wobble that
+   never quite repeats, and compositing them with 'lighter' gives the glow without
+   a blur filter -- cheap enough to hold 60fps on a modest laptop.
 
-Subject: Procurement review, financial year 2025-26, second quarter.
+   It is not decoration. Its energy tracks what the server is doing, so a slow
+   ML-KEM keygen or a long trace reads as activity rather than a frozen page.
+*/
+const orb = (() => {
+  const canvas = $('orb');
+  const ctx = canvas.getContext('2d');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-This note is released to the distribution list at annexe A and to no other reader. It summarises findings from the quarterly review of tender processes across the four regional offices, together with the recommendations of the review committee and a provisional timetable for remedial action.
+  const LAYERS = [
+    {harm:[2,3,5], amp:[.085,.050,.028], spd:[ .32,-.24, .46], hue:'99,102,241',  w:2.0},
+    {harm:[3,5,7], amp:[.070,.038,.022], spd:[-.28, .36,-.50], hue:'192,132,252', w:1.7},
+    {harm:[2,4,6], amp:[.055,.030,.020], spd:[ .42,-.30, .26], hue:'34,211,238',  w:1.4},
+    {harm:[3,4,8], amp:[.045,.026,.014], spd:[-.36, .44, .32], hue:'251,191,36',  w:1.1},
+  ];
 
-FINDINGS
+  let W = 0, H = 0, R = 0, t = 0;
+  let energy = .18, target = .18;
+  let tint = null, tintUntil = 0;
+  const pointer = {a:0, d:0, on:false};
 
-One. Three of the fourteen tenders examined were awarded without a documented comparison against the published evaluation criteria. In each case the file contains a recommendation note but no scoring sheet. The absence of a scoring sheet does not by itself indicate irregularity, but it removes the ability to demonstrate that the award was made on the stated basis.
+  function resize(){
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    const box = canvas.getBoundingClientRect();
+    W = Math.max(1, Math.round(box.width * dpr));
+    H = Math.max(1, Math.round(box.height * dpr));
+    canvas.width = W; canvas.height = H;
+    R = Math.min(W, H) * 0.29;
+  }
 
-Two. The average interval between the closing date and the award decision was sixty one days, against a service standard of thirty. Two awards exceeded one hundred days. Delay of this order materially advantages incumbent suppliers, who continue to be paid under extension arrangements while a decision is pending.
+  function hueNow(fallback){
+    return (tint && performance.now() < tintUntil) ? tint : fallback;
+  }
 
-Three. Two suppliers appear under slightly different registered names in the vendor master and were treated as distinct entities during evaluation. The review committee was not able to establish whether this affected the outcome of either tender, and recommends that the vendor master be deduplicated before the next cycle opens.
+  function ring(layer, phase, scale, alpha){
+    const cx = W/2, cy = H/2, steps = 132;
+    ctx.beginPath();
+    for (let i = 0; i <= steps; i++){
+      const th = (i / steps) * Math.PI * 2;
+      let r = 1;
+      for (let h = 0; h < layer.harm.length; h++){
+        const wobble = layer.amp[h] * (0.55 + energy * 1.5);
+        r += wobble * Math.sin(layer.harm[h] * th + layer.spd[h] * t + phase);
+      }
+      if (pointer.on) r += Math.cos(th - pointer.a) * pointer.d * 0.13;
+      const rr = R * scale * r;
+      const x = cx + rr * Math.cos(th), y = cy + rr * Math.sin(th);
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.closePath();
+    ctx.strokeStyle = 'rgba(' + hueNow(layer.hue) + ',' + alpha + ')';
+    ctx.lineWidth = layer.w * (Math.min(W, H) / 380);
+    ctx.stroke();
+  }
 
-RECOMMENDATIONS
+  function frame(){
+    t += reduce ? 0 : 0.016 * (1 + energy * 2.4);
+    energy += (target - energy) * 0.06;
 
-The committee recommends that scoring sheets be made a mandatory attachment at the point of award, that a standing exception report be produced for any award exceeding the service standard by more than fifty per cent, and that the vendor master be reconciled against the register of companies annually.
+    ctx.clearRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'lighter';
 
-A response to these recommendations is requested from each regional office within thirty working days of the date of this note. Recipients are reminded that this document is individually accountable to the person named on the distribution list and that its onward transmission, in whole or in part, is a breach of the terms under which it was released.`;
+    const cx = W/2, cy = H/2, hue = hueNow('129,140,248');
 
-$('doc').value = SAMPLE;
+    const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 1.5);
+    core.addColorStop(0,   'rgba(' + hue + ',' + (0.30 + energy * 0.34) + ')');
+    core.addColorStop(.42, 'rgba(' + hue + ',' + (0.09 + energy * 0.13) + ')');
+    core.addColorStop(1,   'rgba(0,0,0,0)');
+    ctx.fillStyle = core;
+    ctx.beginPath(); ctx.arc(cx, cy, R * 1.5, 0, Math.PI * 2); ctx.fill();
 
-let recipients = [];
-let lastCopy = null;
+    LAYERS.forEach((layer, i) => {
+      ring(layer, i * 1.7,       1.00,            .40 + energy * .34);
+      ring(layer, i * 1.7 + 2.1, 0.80 + i * .045, .20 + energy * .24);
+      ring(layer, i * 1.7 + 4.2, 0.58 + i * .050, .12 + energy * .18);
+    });
 
-async function api(path, body, isForm) {
-  const opts = { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin' };
-  if (body !== undefined) {
+    const ticks = 48;
+    for (let i = 0; i < ticks; i++){
+      const th = (i / ticks) * Math.PI * 2 + t * 0.22;
+      const rr = R * 1.30 * (1 + 0.05 * Math.sin(i * 3 + t * 1.4));
+      const a = 0.05 + 0.28 * Math.pow(Math.max(0, Math.sin(i * 1.9 + t * 1.1)), 6) * (0.35 + energy);
+      ctx.fillStyle = 'rgba(' + hue + ',' + a + ')';
+      ctx.beginPath();
+      ctx.arc(cx + rr * Math.cos(th), cy + rr * Math.sin(th), Math.min(W,H)/380 * 1.5, 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    ctx.globalCompositeOperation = 'source-over';
+    requestAnimationFrame(frame);
+  }
+
+  canvas.addEventListener('pointermove', (e) => {
+    const b = canvas.getBoundingClientRect();
+    const dx = (e.clientX - (b.left + b.width/2)) / (b.width/2);
+    const dy = (e.clientY - (b.top + b.height/2)) / (b.height/2);
+    pointer.a = Math.atan2(dy, dx);
+    pointer.d = Math.min(1, Math.hypot(dx, dy));
+    pointer.on = true;
+    if (target < .3) target = .3;
+  });
+  canvas.addEventListener('pointerleave', () => { pointer.on = false; });
+  addEventListener('resize', resize);
+
+  resize();
+  requestAnimationFrame(frame);
+
+  return {
+    idle(){ target = .18; },
+    listen(){ target = .34; },
+    busy(){ target = 1.0; },
+    flash(kind){
+      tint = kind === 'good' ? '74,222,128' : kind === 'bad' ? '251,113,133' : '251,191,36';
+      tintUntil = performance.now() + 2100;
+      target = kind === 'good' ? .62 : .8;
+      setTimeout(() => { target = .28; }, 900);
+    },
+  };
+})();
+
+/* ============================================================ the orb speaking */
+let typing = 0;
+async function say(title, text){
+  const run = ++typing;
+  $('sayTitle').textContent = title;
+  const el = $('sayText');
+  el.textContent = '';
+  const caret = document.createElement('span');
+  caret.className = 'caret';
+  el.appendChild(caret);
+  for (let i = 0; i < text.length; i++){
+    if (run !== typing) return;            // a newer line superseded this one
+    caret.insertAdjacentText('beforebegin', text[i]);
+    if (i % 2 === 0) await sleep(9);
+  }
+  await sleep(600);
+  if (run === typing) caret.remove();
+}
+
+/* ==================================================================== the steps */
+const STEPS = [
+  {id:'s1', title:'Enrol the recipients',
+   line:'Each person gets an ML-KEM-768 key pair to receive their key bundle, and an ML-DSA-65 pair to sign a receipt when they decrypt. Pick a number and generate.'},
+  {id:'s2', title:'Encrypt once, for everybody',
+   line:'The document splits into a body plus m mark slots. Each slot is written two ways that look identical, encrypted under different keys. Everyone gets the same ciphertext.'},
+  {id:'s3', title:'Decrypt as one recipient',
+   line:'They unwrap their bundle and decrypt exactly one rendering per slot. Then press the second button: their real key, against the rendering they were never issued.'},
+  {id:'s4', title:'Trace the leak',
+   line:'Read the slots back, score them against every codeword, and report a provable bound on the chance an innocent person scores this high. Or splice three copies together and try to hide.'},
+  {id:'s5', title:'Audit the ledger',
+   line:'Every decryption is a signed entry in a hash chain, witnessed by a Merkle checkpoint. Corrupt one and watch what stops adding up.'},
+];
+let step = 0;
+const done = new Set();
+
+function buildRail(){
+  const rail = $('rail');
+  rail.textContent = '';
+  STEPS.forEach((s, i) => {
+    if (i){
+      const link = document.createElement('div');
+      link.className = 'link' + (done.has(i - 1) ? ' done' : '');
+      rail.appendChild(link);
+    }
+    const bead = document.createElement('button');
+    bead.className = 'bead' + (i === step ? ' on' : done.has(i) ? ' done' : '');
+    bead.textContent = (done.has(i) && i !== step) ? '✓' : String(i + 1);
+    bead.title = STEPS[i].title;
+    bead.onclick = () => goStep(i);
+    rail.appendChild(bead);
+  });
+}
+
+function goStep(i, quiet){
+  step = Math.max(0, Math.min(STEPS.length - 1, i));
+  STEPS.forEach((s, k) => $(s.id).classList.toggle('live', k === step));
+  buildRail();
+  $('bBack').disabled = step === 0;
+  $('bNext').disabled = step === STEPS.length - 1;
+  if (!quiet) say(STEPS[step].title, STEPS[step].line);
+  orb.listen();
+}
+function complete(i){ done.add(i); buildRail(); }
+$('bBack').onclick = () => goStep(step - 1);
+$('bNext').onclick = () => goStep(step + 1);
+
+/* ======================================================================== api */
+async function api(path, body, isForm){
+  const opts = {method: body === undefined ? 'GET' : 'POST', credentials:'same-origin'};
+  if (body !== undefined){
     if (isForm) opts.body = body;
-    else { opts.headers = { 'Content-Type': 'application/json' }; opts.body = JSON.stringify(body); }
+    else { opts.headers = {'Content-Type':'application/json'}; opts.body = JSON.stringify(body); }
   }
   const r = await fetch(path, opts);
   const text = await r.text();
-  let data; try { data = JSON.parse(text); } catch { data = { detail: text }; }
+  let data; try { data = JSON.parse(text); } catch (err) { data = {detail:text}; }
   if (!r.ok) throw new Error(data.detail || ('HTTP ' + r.status));
   return data;
 }
-
-function busy(btn, on) {
+function busy(btn, on){
   btn.disabled = on;
-  btn.dataset.label = btn.dataset.label || btn.textContent;
-  btn.innerHTML = on ? '<span class="spin"></span> working…' : btn.dataset.label;
+  if (!btn.dataset.label) btn.dataset.label = btn.innerHTML;
+  btn.innerHTML = on ? '<span class="spin"></span>working' : btn.dataset.label;
+  on ? orb.busy() : orb.listen();
 }
-function fail(el, e) { $(el).innerHTML = '<div class="err">' + esc(e.message) + '</div>'; }
-function enable(id) { $(id).classList.remove('off'); }
-function fmtP(p, log10) {
-  // Defensive: a bound strong enough to underflow arrives as 0 with the magnitude in
-  // log10. Anything unexpected must degrade to a readable string rather than throwing
-  // and blanking the whole report.
+function fail(el, e){
+  $(el).innerHTML = '<div class="err">' + esc(e.message) + '</div>';
+  orb.flash('bad');
+}
+function fmtP(p, log10){
   if (p === null || p === undefined || Number.isNaN(p)) return 'n/a';
-  if (p === 0) {
-    return Number.isFinite(log10) ? '< 1e-300 (log10 = ' + log10.toFixed(1) + ')' : '< 1e-300';
-  }
+  if (p === 0) return Number.isFinite(log10) ? '< 1e-300 (log10 = ' + log10.toFixed(1) + ')' : '< 1e-300';
   if (p < 1e-4) return p.toExponential(3);
   return p.toFixed(6);
 }
-function num(v, digits) { return Number.isFinite(v) ? v.toFixed(digits) : '—'; }
-function bytes(n) { return n.toLocaleString() + ' B'; }
+const num = (v, d) => Number.isFinite(v) ? v.toFixed(d) : '—';
+const bytes = (n) => n.toLocaleString() + ' B';
 
-// ---- info ----
+/* ===================================================================== content */
+const SAMPLE = [
+"MINISTRY OF SOCIAL JUSTICE AND EMPOWERMENT",
+"INTERNAL ASSESSMENT NOTE -- RESTRICTED CIRCULATION",
+"",
+"Subject: Procurement review, financial year 2025-26, second quarter.",
+"",
+"This note is released to the distribution list at annexe A and to no other reader. It summarises findings from the quarterly review of tender processes across the four regional offices, together with the recommendations of the review committee and a provisional timetable for remedial action.",
+"",
+"FINDINGS",
+"",
+"One. Three of the fourteen tenders examined were awarded without a documented comparison against the published evaluation criteria. In each case the file contains a recommendation note but no scoring sheet. The absence of a scoring sheet does not by itself indicate irregularity, but it removes the ability to demonstrate that the award was made on the stated basis.",
+"",
+"Two. The average interval between the closing date and the award decision was sixty one days, against a service standard of thirty. Two awards exceeded one hundred days. Delay of this order materially advantages incumbent suppliers, who continue to be paid under extension arrangements while a decision is pending.",
+"",
+"Three. Two suppliers appear under slightly different registered names in the vendor master and were treated as distinct entities during evaluation. The review committee was not able to establish whether this affected the outcome of either tender, and recommends that the vendor master be deduplicated before the next cycle opens.",
+"",
+"RECOMMENDATIONS",
+"",
+"The committee recommends that scoring sheets be made a mandatory attachment at the point of award, that a standing exception report be produced for any award exceeding the service standard by more than fifty per cent, and that the vendor master be reconciled against the register of companies annually.",
+"",
+"A response to these recommendations is requested from each regional office within thirty working days of the date of this note. Recipients are reminded that this document is individually accountable to the person named on the distribution list and that its onward transmission, in whole or in part, is a breach of the terms under which it was released.",
+].join("\n");
+$('doc').value = SAMPLE;
+
+let recipients = [];
+
 api('/api/info').then(d => {
   const a = d.algorithms;
   $('algs').innerHTML = [
-    ['key encapsulation', a.kem + ' (FIPS 203)'],
-    ['signatures', a.sig + ' (FIPS 204)'],
-    ['content', a.aead],
-    ['hash / KDF', a.hash + ' · HKDF'],
-    ['liboqs', a.liboqs],
-  ].map(([k, v]) => '<span class="chip">' + k + ' <b>' + esc(v) + '</b></span>').join('');
-});
+    ['KEM', a.kem], ['SIG', a.sig], ['AEAD', a.aead], ['HASH', a.hash], ['liboqs', a.liboqs],
+  ].map(pair => '<span class="chip">' + pair[0] + ' <b>' + esc(pair[1]) + '</b></span>').join('');
+}).catch(() => { $('algs').innerHTML = '<span class="chip">offline</span>'; });
 
-// ---- 1. enroll ----
+/* -------------------------------------------------------------------- step 1 */
 $('bEnroll').onclick = async () => {
   busy($('bEnroll'), true);
   try {
-    const d = await api('/api/enroll', { recipients: +$('n').value });
+    const d = await api('/api/enroll', {recipients: +$('n').value});
     recipients = d.recipients;
-    for (const sel of ['who', 'c1', 'c2', 'c3']) {
+    ['who','c1','c2','c3'].forEach(sel => {
       $(sel).innerHTML = recipients.map(r => '<option>' + r + '</option>').join('');
-    }
+    });
     $('c2').selectedIndex = 1; $('c3').selectedIndex = 2;
     $('oEnroll').innerHTML =
       '<dl class="kv">' +
-      '<dt>recipients</dt><dd>' + recipients.length + ' &middot; ' + recipients[0] + ' … ' + recipients[recipients.length - 1] + '</dd>' +
-      '<dt>witnesses</dt><dd>' + d.witnesses.length + ', ' + d.threshold + '-of-' + d.witnesses.length + ' required to sign a checkpoint</dd>' +
-      '<dt>witness key ids</dt><dd>' + d.witnesses.map(esc).join('<br>') + '</dd>' +
-      '</dl><div class="note">' + (recipients.length * 2) +
-      ' post-quantum key pairs generated. Each recipient’s private keys live in a directory standing in for their own device — the distributor never needs them.</div>';
-    enable('s2');
+      '<dt>recipients</dt><dd>' + recipients.length + ' &middot; ' + recipients[0] +
+        ' … ' + recipients[recipients.length - 1] + '</dd>' +
+      '<dt>witnesses</dt><dd>' + d.witnesses.length + ', ' + d.threshold + '-of-' +
+        d.witnesses.length + ' required per checkpoint</dd>' +
+      '<dt>witness keys</dt><dd>' + d.witnesses.map(esc).join('<br>') + '</dd></dl>' +
+      '<div class="note">' + (recipients.length * 2) + ' post-quantum key pairs generated. ' +
+      'Each recipient’s private keys live in a directory standing in for their own ' +
+      'device — the distributor never needs them.</div>';
+    complete(0);
+    orb.flash('good');
+    say('Keys are live', (recipients.length * 2) + ' post-quantum key pairs exist. Nothing has been encrypted yet — move to step two.');
   } catch (e) { fail('oEnroll', e); }
   busy($('bEnroll'), false);
 };
 
-// ---- 2. protect ----
+/* -------------------------------------------------------------------- step 2 */
 $('bProtect').onclick = async () => {
   busy($('bProtect'), true);
   try {
@@ -336,48 +579,66 @@ $('bProtect').onclick = async () => {
       document: $('doc').value, carrier: $('carrier').value,
       coalition: +$('coalition').value, eps: 1e-6,
     });
-    const capped = d.capped_by_carrier;
     $('oProtect').innerHTML =
       '<dl class="kv">' +
       '<dt>mark slots</dt><dd>' + d.slots + ' of ' + d.carrier_capacity + ' available in this document</dd>' +
-      '<dt>shared ciphertext</dt><dd>' + bytes(d.size.public_bytes) + ' &mdash; <strong>identical for all ' + d.recipients + ' recipients</strong></dd>' +
-      '<dt>per recipient</dt><dd>' + bytes(d.size.per_recipient_bytes) + ' (ML-KEM ciphertext + wrapped bundle)</dd>' +
-      '<dt>best achievable</dt><dd>false-accusation probability ' + d.achievable_eps.toExponential(2) + ' against a single leaker</dd>' +
-      '</dl>' +
-      (capped ? '<div class="warnbox">The Tardos bound asks for <strong>' + d.slots_requested.toLocaleString() +
-        '</strong> slots at this coalition size and confidence; this document holds <strong>' + d.carrier_capacity +
-        '</strong>. The code is shortened rather than the requirement being quietly dropped — which costs confidence, not correctness: the reported probability is computed from the score actually observed. Here that still comes to ' +
-        d.achievable_eps.toExponential(2) + '.</div>' : '') +
-      '<div class="note">Each slot’s two renderings are encrypted under different keys. A recipient holds exactly one key per slot, so there is no unmarked copy anywhere in the system — not in the package, not in transit, not on the distributor’s disk.</div>';
-    enable('s3'); enable('s4'); enable('s5');
+      '<dt>shared ciphertext</dt><dd>' + bytes(d.size.public_bytes) +
+        ' — <strong>identical for all ' + d.recipients + ' recipients</strong></dd>' +
+      '<dt>per recipient</dt><dd>' + bytes(d.size.per_recipient_bytes) +
+        ' (ML-KEM ciphertext + wrapped bundle)</dd>' +
+      '<dt>best achievable</dt><dd>false-accusation probability ' +
+        d.achievable_eps.toExponential(2) + ' against a single leaker</dd></dl>' +
+      (d.capped_by_carrier
+        ? '<div class="warnbox">The Tardos bound asks for <strong>' +
+          d.slots_requested.toLocaleString() + '</strong> slots at this coalition size and ' +
+          'confidence; this document holds <strong>' + d.carrier_capacity + '</strong>. The code ' +
+          'is shortened rather than the requirement quietly dropped — which costs confidence, ' +
+          'not correctness: the probability is computed from the score actually observed. Here ' +
+          'that still comes to ' + d.achievable_eps.toExponential(2) + '.</div>'
+        : '') +
+      '<div class="note">Each slot’s two renderings are encrypted under different keys. A ' +
+      'recipient holds exactly one key per slot, so there is no unmarked copy anywhere in the ' +
+      'system — not in the package, not in transit, not on the distributor’s disk.</div>';
+    complete(1);
+    orb.flash('good');
+    say('One package, every fingerprint',
+        d.slots + ' slots, one ciphertext of ' + bytes(d.size.public_bytes) + ' for all ' +
+        d.recipients + ' recipients. Only the ' + bytes(d.size.per_recipient_bytes) + ' key bundle differs.');
   } catch (e) { fail('oProtect', e); }
   busy($('bProtect'), false);
 };
 
-// ---- 3. open ----
+/* -------------------------------------------------------------------- step 3 */
 $('bOpen').onclick = async () => {
   busy($('bOpen'), true);
   try {
-    const d = await api('/api/open', { recipient: $('who').value });
-    lastCopy = d;
+    const d = await api('/api/open', {recipient: $('who').value});
     let marks = '';
-    if (d.preview !== null) {
+    if (d.preview !== null){
       const shown = esc(d.preview).split(ZWSP).join('<span class="zwsp">&nbsp;</span>');
-      marks = '<div class="note" style="margin-top:14px">The copy, with each invisible mark highlighted. Remove the highlighting and it is the original document, character for character.</div>' +
-        '<div style="max-height:190px;overflow:auto;background:#0f1520;border:1px solid var(--line);border-radius:8px;padding:11px;margin-top:8px;font:12px/1.7 var(--mono);white-space:pre-wrap">' + shown + '</div>';
+      marks = '<div class="note" style="margin-top:15px">The copy, with each invisible mark ' +
+        'highlighted. Remove the highlighting and it is the original document, character for ' +
+        'character.</div><div style="max-height:190px;overflow:auto;background:rgba(0,0,0,.34);' +
+        'border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:9px;' +
+        'font:12px/1.75 var(--mono);white-space:pre-wrap">' + shown + '</div>';
       $('leak').value = d.preview;
     } else {
       $('leak').value = '';
-      marks = '<div class="note" style="margin-top:14px">A PDF copy. Download it, then upload it in step 4 to trace it — or open it and confirm there is nothing to see.</div>';
+      marks = '<div class="note" style="margin-top:15px">A PDF copy. Download it, then upload ' +
+        'it in the next step — or open it and confirm there is nothing to see.</div>';
     }
     $('oOpen').innerHTML =
       '<dl class="kv">' +
       '<dt>recipient</dt><dd>' + esc(d.recipient_id) + '</dd>' +
-      '<dt>their copy</dt><dd>' + bytes(d.bytes) + ' &middot; <a href="' + d.download + '">download</a></dd>' +
+      '<dt>their copy</dt><dd>' + bytes(d.bytes) + ' &middot; <a href="' + d.download +
+        '" style="color:var(--accent)">download</a></dd>' +
       '<dt>SHA3-256</dt><dd>' + esc(d.doc_hash) + '</dd>' +
-      '<dt>ledger entry</dt><dd>seq ' + d.ledger_seq + ' &middot; ' + esc(d.entry_hash.slice(0, 40)) + '…</dd>' +
-      '</dl>' + marks;
-    if (d.preview !== null) $('leak').value = d.preview;
+      '<dt>ledger entry</dt><dd>seq ' + d.ledger_seq + ' &middot; ' +
+        esc(d.entry_hash.slice(0, 40)) + '…</dd></dl>' + marks;
+    complete(2);
+    orb.flash('good');
+    say('Signed for, and marked',
+        esc(d.recipient_id) + ' holds a copy nobody else has, and signed an ML-DSA-65 receipt for it. Now try the other button.');
   } catch (e) { fail('oOpen', e); }
   busy($('bOpen'), false);
 };
@@ -385,78 +646,101 @@ $('bOpen').onclick = async () => {
 $('bProve').onclick = async () => {
   busy($('bProve'), true);
   try {
-    const d = await api('/api/prove-key-binding', { recipient: $('who').value, slot: Math.floor(Math.random() * 1000) });
+    const d = await api('/api/prove-key-binding',
+                        {recipient: $('who').value, slot: Math.floor(Math.random() * 1000)});
     const refused = !d.other_variant_decrypts;
     $('oOpen').innerHTML =
       '<div class="verdict ' + (refused ? 'id' : 'no') + '">' +
       '<h3>' + (refused ? 'Refused — as it must be' : 'PROBLEM: the other variant decrypted') + '</h3>' +
-      '<div style="font-size:13.5px;color:var(--dim)">This is the project’s central security claim, run just now against this session’s real package.</div>' +
-      '<ul class="checks">' +
-      '<li class="ok">✓ slot ' + d.slot + ': the variant key ' + esc(d.recipient_id) + ' was issued opens rendering ' + d.variant_they_hold + '</li>' +
-      '<li class="' + (refused ? 'ok' : 'no') + '">' + (refused ? '✓' : '✗') + ' the same key against rendering ' + d.variant_they_do_not +
-      ': <strong>' + esc(d.other_variant_error || 'it decrypted') + '</strong></li>' +
-      '</ul>' +
-      '<div class="note" style="margin-top:10px">The AES-GCM tag check is the enforcement. There is no code path around a tag check, so patching the client does not help, and reverse-engineering it does not help — the bytes for the other rendering cannot be produced without a key this recipient was never given.</div>' +
-      '</div>';
+      '<div style="font-size:13.5px;color:var(--dim)">The project’s central security claim, ' +
+      'run just now against this session’s real package.</div><ul class="checks">' +
+      '<li class="ok">✓ slot ' + d.slot + ': the variant key ' + esc(d.recipient_id) +
+        ' was issued opens rendering ' + d.variant_they_hold + '</li>' +
+      '<li class="' + (refused ? 'ok' : 'no') + '">' + (refused ? '✓' : '✗') +
+        ' the same key against rendering ' + d.variant_they_do_not + ': <strong>' +
+        esc(d.other_variant_error || 'it decrypted') + '</strong></li></ul>' +
+      '<div class="note" style="margin-top:11px">The AES-GCM tag check is the enforcement. There ' +
+      'is no code path around a tag check, so patching the client does not help and reverse ' +
+      'engineering it does not help — the bytes for the other rendering cannot be produced ' +
+      'without a key this recipient was never given.</div></div>';
+    orb.flash(refused ? 'good' : 'bad');
+    say(refused ? 'It cannot be done' : 'Something is very wrong',
+        refused
+          ? 'The fingerprint is not a setting their software chose. It is a consequence of the keys they hold, and there is no unmarked copy to patch their way to.'
+          : 'The other variant decrypted. That should be impossible.');
   } catch (e) { fail('oOpen', e); }
   busy($('bProve'), false);
 };
 
-// ---- 4. trace ----
-function renderReport(d, extra) {
-  const a = d.accused;
+/* -------------------------------------------------------------------- step 4 */
+function renderReport(d){
+  const a = d.accused, L = d.ledger;
   const cls = d.verdict === 'IDENTIFIED' ? 'id' : (d.verdict === 'UNCORROBORATED' ? 'un' : 'no');
-  const L = d.ledger;
-  const check = (ok, text) => '<li class="' + (ok ? 'ok' : 'no') + '">' + (ok ? '✓' : '✗') + ' ' + text + '</li>';
+  const check = (ok, text) => '<li class="' + (ok ? 'ok' : 'no') + '">' +
+                              (ok ? '✓' : '✗') + ' ' + text + '</li>';
 
-  let head = '<div class="verdict ' + cls + '"><h3>' + d.verdict +
-    (d.verdict === 'IDENTIFIED' ? ' — ' + esc(a.recipient_id) : '') + '</h3>';
-  if (a) {
-    head += '<div style="font-size:13.5px">' +
-      (d.verdict === 'IDENTIFIED'
-        ? 'False-accusation probability <strong>at most ' + fmtP(a.p_bound, a.log10_p_bound) + '</strong> — a provable bound, not an approximation.'
-        : 'Best match ' + esc(a.recipient_id) + ' at z = ' + num(a.z_score, 2) +
-          ', bound ' + fmtP(a.p_bound, a.log10_p_bound) + ' — not strong enough to name anybody at α = 1e-6.') +
-      '</div>';
+  let html = '<div class="verdict ' + cls + '"><h3>' + d.verdict +
+             (d.verdict === 'IDENTIFIED' ? ' — ' + esc(a.recipient_id) : '') + '</h3>';
+  if (a){
+    html += '<div style="font-size:13.5px">' + (d.verdict === 'IDENTIFIED'
+      ? 'False-accusation probability <strong>at most ' + fmtP(a.p_bound, a.log10_p_bound) +
+        '</strong> — a provable bound, not an approximation.'
+      : 'Best match ' + esc(a.recipient_id) + ' at z = ' + num(a.z_score, 2) + ', bound ' +
+        fmtP(a.p_bound, a.log10_p_bound) + ' — not strong enough to name anybody at α = 1e-6.')
+      + '</div>';
   }
-  head += '<ul class="checks">' +
+  html += '<ul class="checks">' +
     check(d.statistically_significant, 'statistical significance (provable bound &lt; α)') +
-    check(L.receipt_signature_valid, 'the accused’s own ML-DSA-65 receipt verifies' + (L.seq !== null ? ' (ledger seq ' + L.seq + ')' : '')) +
+    check(L.receipt_signature_valid, 'the accused’s own ML-DSA-65 receipt verifies' +
+          (L.seq !== null ? ' (ledger seq ' + L.seq + ')' : '')) +
     check(L.chain_ok, 'ledger hash chain intact') +
-    check(L.checkpoint_valid, 'checkpoint witnesses ' + L.checkpoint_witnesses + '/' + L.checkpoint_required + ' required') +
-    check(L.inclusion_proof_valid, 'Merkle inclusion proof to the witness-signed root') +
-    '</ul>';
-  if (!d.conclusive && d.statistically_significant) {
-    head += '<div class="note" style="margin-top:10px">The marks match, but the ledger evidence does not stand up. That is a lead, not an identification — and the difference is the point.</div>';
+    check(L.checkpoint_valid, 'checkpoint witnesses ' + L.checkpoint_witnesses + '/' +
+          L.checkpoint_required + ' required') +
+    check(L.inclusion_proof_valid, 'Merkle inclusion proof to the witness-signed root') + '</ul>';
+  if (!d.conclusive && d.statistically_significant){
+    html += '<div class="note" style="margin-top:11px">The marks match, but the ledger evidence ' +
+            'does not stand up. That is a lead, not an identification — and the difference ' +
+            'is the point.</div>';
   }
-  head += '</div>';
+  html += '</div>';
 
-  let table = '<table><tr><th>recipient</th><th class="mono">z</th><th class="mono">raw score</th><th class="mono">false-accusation bound</th></tr>';
-  const all = (a ? [a] : []).concat(d.runners_up || []);
-  for (const s of all) {
-    table += '<tr><td>' + esc(s.recipient_id) + (s === a ? ' <span class="pill">best</span>' : '') + '</td>' +
-      '<td class="mono">' + num(s.z_score, 2) + '</td>' +
-      '<td class="mono">' + num(s.raw_score, 1) + '</td>' +
-      '<td class="mono">' + (s.p_bound_exact ? fmtP(s.p_bound, s.log10_p_bound) : 'not accusable') + '</td></tr>';
+  html += '<table><tr><th>recipient</th><th class="mono">z</th><th class="mono">raw score</th>' +
+          '<th class="mono">false-accusation bound</th></tr>';
+  (a ? [a] : []).concat(d.runners_up || []).forEach(s => {
+    html += '<tr><td>' + esc(s.recipient_id) + (s === a ? ' <span class="pill">best</span>' : '') +
+            '</td><td class="mono">' + num(s.z_score, 2) + '</td><td class="mono">' +
+            num(s.raw_score, 1) + '</td><td class="mono">' +
+            (s.p_bound_exact ? fmtP(s.p_bound, s.log10_p_bound) : 'not accusable') + '</td></tr>';
+  });
+  html += '</table><dl class="kv" style="margin-top:15px"><dt>readable slots</dt><dd>' +
+          d.m_eff + ' of ' + d.m + '</dd></dl>';
+  html += (d.notes || []).map(n => '<div class="note">' + esc(n) + '</div>').join('');
+  $('oTrace').innerHTML = html;
+
+  complete(3);
+  if (d.conclusive){
+    orb.flash('good');
+    say('Traced', esc(a.recipient_id) + ', with a provable false-accusation probability of at most ' +
+        fmtP(a.p_bound, a.log10_p_bound) + ', and every ledger check standing behind it.');
+  } else if (d.statistically_significant){
+    orb.flash('warn');
+    say('A lead, not a case', 'The marks match, but the ledger evidence does not stand up. The system refuses to call that an identification.');
+  } else {
+    orb.flash('warn');
+    say('Nobody is named', 'No recipient’s codeword explains these marks at the confidence asked for. A failure to identify — never the wrong person.');
   }
-  table += '</table>';
-
-  const notes = (d.notes || []).map(n => '<div class="note">' + esc(n) + '</div>').join('');
-  $('oTrace').innerHTML = (extra || '') + head +
-    '<dl class="kv" style="margin-top:14px"><dt>readable slots</dt><dd>' + d.m_eff + ' of ' + d.m +
-    '</dd><dt>α</dt><dd>' + d.alpha.toExponential(0) + '</dd></dl>' + table + notes;
 }
 
 $('bTrace').onclick = async () => {
   busy($('bTrace'), true);
-  try { renderReport(await api('/api/trace-text', { leaked: $('leak').value })); }
+  try { renderReport(await api('/api/trace-text', {leaked: $('leak').value})); }
   catch (e) { fail('oTrace', e); }
   busy($('bTrace'), false);
 };
 
 $('bTraceFile').onclick = async () => {
   const f = $('file').files[0];
-  if (!f) { fail('oTrace', new Error('choose a file first')); return; }
+  if (!f){ fail('oTrace', new Error('choose a file first')); return; }
   busy($('bTraceFile'), true);
   try {
     const fd = new FormData(); fd.append('leaked', f);
@@ -468,69 +752,107 @@ $('bTraceFile').onclick = async () => {
 $('bCollude').onclick = async () => {
   busy($('bCollude'), true);
   try {
-    const ids = [...new Set([$('c1').value, $('c2').value, $('c3').value])];
-    const d = await api('/api/collude', { recipients: ids, strategy: $('strategy').value });
+    const ids = Array.from(new Set([$('c1').value, $('c2').value, $('c3').value]));
+    const d = await api('/api/collude', {recipients: ids, strategy: $('strategy').value});
     const caught = d.caught.length > 0;
-    let html = '<div class="verdict ' + (caught ? 'id' : 'un') + '">' +
-      '<h3>' + (caught ? 'Colluder in the top three: ' + d.caught.map(esc).join(', ') : 'No colluder in the top three') + '</h3>' +
-      '<div style="font-size:13.5px;color:var(--dim)">' + esc(d.coalition.join(' + ')) + ' spliced their copies together (' + esc(d.strategy) + ').</div>' +
-      '<dl class="kv" style="margin-top:10px">' +
+    let html = '<div class="verdict ' + (caught ? 'id' : 'un') + '"><h3>' +
+      (caught ? 'Colluder in the top three: ' + d.caught.map(esc).join(', ')
+              : 'No colluder in the top three') + '</h3>' +
+      '<div style="font-size:13.5px;color:var(--dim)">' + esc(d.coalition.join(' + ')) +
+      ' spliced their copies together (' + esc(d.strategy) + ').</div>' +
+      '<dl class="kv" style="margin-top:11px">' +
       '<dt>slots they could choose</dt><dd>' + d.slots_free + '</dd>' +
-      '<dt>slots they were stuck with</dt><dd>' + d.slots_forced + ' — they all hold the same variant key there, so neither the other rendering nor a third one is obtainable</dd>' +
-      '</dl></div>';
-    html += '<table><tr><th>recipient</th><th class="mono">z</th><th class="mono">bound</th><th></th></tr>';
-    for (const s of d.ranked) {
-      const member = d.coalition.includes(s.recipient_id);
+      '<dt>slots they were stuck with</dt><dd>' + d.slots_forced + ' — all of them hold the ' +
+      'same variant key there, so neither the other rendering nor a third one is obtainable</dd>' +
+      '</dl></div><table><tr><th>recipient</th><th class="mono">z</th><th class="mono">bound</th><th></th></tr>';
+    d.ranked.forEach(s => {
       html += '<tr><td>' + esc(s.recipient_id) + '</td><td class="mono">' + num(s.z_score, 2) +
-        '</td><td class="mono">' + (s.p_bound_exact ? fmtP(s.p_bound, s.log10_p_bound) : '—') + '</td>' +
-        '<td>' + (member ? '<span class="pill" style="background:#10261a;color:#3fb950">colluder</span>' : '') + '</td></tr>';
-    }
-    html += '</table><div class="note">Tardos codes are built for exactly this: the coalition can only act where its members disagree, and every such choice still leaves a trace of whoever supplied the bit.</div>';
+        '</td><td class="mono">' + (s.p_bound_exact ? fmtP(s.p_bound, s.log10_p_bound) : '—') +
+        '</td><td>' + (d.coalition.indexOf(s.recipient_id) >= 0
+          ? '<span class="pill" style="background:rgba(74,222,128,.14);border-color:rgba(74,222,128,.3);color:#86efac">colluder</span>'
+          : '') + '</td></tr>';
+    });
+    html += '</table><div class="note">Tardos codes are built for exactly this: a coalition can ' +
+            'only act where its members disagree, and every such choice still leaves a trace of ' +
+            'whoever supplied the bit.</div>';
     $('oTrace').innerHTML = html;
+    complete(3);
+    orb.flash(caught ? 'good' : 'warn');
+    say(caught ? 'The coalition leaked anyway' : 'This coalition got away with it',
+        caught
+          ? d.slots_forced + ' of ' + d.slots + ' slots were forced — they all held the same key there and could not choose. That is what gives them away.'
+          : 'At this code length the coalition can dilute the evidence below the threshold. The system declines to name anybody rather than guessing.');
   } catch (e) { fail('oTrace', e); }
   busy($('bCollude'), false);
 };
 
-// ---- 5. audit ----
-async function audit(action, seq) {
-  const btn = action === 'tamper' ? $('bTamper') : (action === 'restore' ? $('bRestore') : $('bAudit'));
+/* -------------------------------------------------------------------- step 5 */
+async function audit(action, seq){
+  const btn = action === 'tamper' ? $('bTamper') : action === 'restore' ? $('bRestore') : $('bAudit');
   busy(btn, true);
   try {
-    const d = await api('/api/audit', { action, seq: seq || 0 });
+    const d = await api('/api/audit', {action: action, seq: seq || 0});
     const chain = d.chain;
     let html = '';
-    if (d.changed && action === 'tamper' && d.changed.before) {
-      html += '<div class="warnbox">Entry ' + d.changed.seq + '’s <code>' + esc(d.changed.field) +
-        '</code> was rewritten in the stored ledger — exactly what a dishonest administrator would do.<br>' +
-        '<span style="font-family:var(--mono);font-size:11.5px">was ' + esc(String(d.changed.before).slice(0, 32)) +
-        '…<br>now ' + esc(String(d.changed.after).slice(0, 32)) + '…</span></div>';
+    if (d.changed && action === 'tamper' && d.changed.before){
+      html += '<div class="warnbox">Entry ' + d.changed.seq + '’s <code>' +
+        esc(d.changed.field) + '</code> was rewritten in the stored ledger — exactly what a ' +
+        'dishonest administrator would do.<br><span style="font-family:var(--mono);font-size:11.5px">was ' +
+        esc(String(d.changed.before).slice(0, 32)) + '…<br>now ' +
+        esc(String(d.changed.after).slice(0, 32)) + '…</span></div>';
     }
-    if (d.changed && action === 'restore') {
-      html += '<div class="note">' + (d.changed.restored ? 'Restored the pre-tamper ledger.' : 'Nothing to restore.') + '</div>';
+    if (d.changed && action === 'restore'){
+      html += '<div class="note">' +
+        (d.changed.restored ? 'Restored the pre-tamper ledger.' : 'Nothing to restore.') + '</div>';
     }
-    html += '<ul class="checks">' +
-      '<li class="' + (chain.ok ? 'ok' : 'no') + '">' + (chain.ok ? '✓' : '✗') + ' hash chain over ' + d.entries + ' entries ' +
+    html += '<ul class="checks"><li class="' + (chain.ok ? 'ok' : 'no') + '">' +
+      (chain.ok ? '✓' : '✗') + ' hash chain over ' + d.entries + ' entries ' +
       (chain.ok ? 'intact' : '<strong>BROKEN at seq ' + chain.first_bad_seq + '</strong>') + '</li>';
-    for (const p of (chain.problems || []).slice(0, 4)) html += '<li class="no">&nbsp;&nbsp;&nbsp;' + esc(p) + '</li>';
-    for (const cp of d.checkpoints) {
-      html += '<li class="' + (cp.valid ? 'ok' : 'no') + '">' + (cp.valid ? '✓' : '✗') + ' checkpoint #' + cp.index +
-        ' over seq ' + cp.range[0] + '–' + cp.range[1] + ', signed by ' + cp.witnesses + '/' + d.witness_threshold + ' witnesses</li>';
-      html += '<li class="' + (cp.root_matches_entries ? 'ok' : 'no') + '">' + (cp.root_matches_entries ? '✓' : '✗') +
+    (chain.problems || []).slice(0, 4).forEach(p => {
+      html += '<li class="no">&nbsp;&nbsp;&nbsp;' + esc(p) + '</li>';
+    });
+    d.checkpoints.forEach(cp => {
+      html += '<li class="' + (cp.valid ? 'ok' : 'no') + '">' + (cp.valid ? '✓' : '✗') +
+        ' checkpoint #' + cp.index + ' over seq ' + cp.range[0] + '–' + cp.range[1] +
+        ', signed by ' + cp.witnesses + '/' + d.witness_threshold + ' witnesses</li>';
+      html += '<li class="' + (cp.root_matches_entries ? 'ok' : 'no') + '">' +
+        (cp.root_matches_entries ? '✓' : '✗') +
         '&nbsp;&nbsp;&nbsp;the ledger still reproduces that witnessed root' +
         (cp.root_matches_entries ? '' : ' — <strong>it no longer does</strong>') + '</li>';
-    }
+    });
     html += '</ul>';
-    if (d.checkpoints.length) {
-      html += '<dl class="kv" style="margin-top:12px"><dt>anchor</dt><dd>' + esc(d.checkpoints[d.checkpoints.length - 1].anchor) + '</dd></dl>' +
-        '<div class="note">That string is what the QR anchor encodes. Print it and the paper becomes a witness: a ledger rewritten later cannot match a root published before it was rewritten. No chain, no orderer, no network.</div>';
+    if (d.checkpoints.length){
+      html += '<dl class="kv" style="margin-top:13px"><dt>anchor</dt><dd>' +
+        esc(d.checkpoints[d.checkpoints.length - 1].anchor) + '</dd></dl>' +
+        '<div class="note">That string is what the QR anchor encodes. Print it and the paper ' +
+        'becomes a witness: a ledger rewritten later cannot match a root published before it was ' +
+        'rewritten. No chain, no orderer, no network.</div>';
     }
     $('oAudit').innerHTML = html;
+    complete(4);
+
+    if (action === 'tamper'){
+      orb.flash('bad');
+      say('Caught', 'One field changed, and the chain, the recipient’s signature and the witnessed Merkle root all stop agreeing at once.');
+    } else if (chain.ok){
+      orb.flash('good');
+      say('The record holds', 'Every entry signed by the recipient who decrypted, chained, and covered by a checkpoint two of three independent witnesses put their name to.');
+    } else {
+      orb.flash('bad');
+      say('The record is broken', 'The chain does not verify. No trace against this ledger can be called conclusive.');
+    }
   } catch (e) { fail('oAudit', e); }
   busy(btn, false);
 }
 $('bAudit').onclick = () => audit('verify');
 $('bTamper').onclick = () => audit('tamper', 0);
 $('bRestore').onclick = () => audit('restore');
+
+/* ------------------------------------------------------------------- kick off */
+buildRail();
+goStep(0, true);
+say('Encrypt once. Fingerprint everyone.',
+    'A document goes to N people. Each copy is visually identical but uniquely marked — and the mark is decided by which keys they hold, not by software that politely applies a watermark. Start with step one.');
 </script>
 </body>
 </html>

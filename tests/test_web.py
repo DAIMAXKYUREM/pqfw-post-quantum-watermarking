@@ -51,7 +51,18 @@ def ready(client):
 def test_the_page_and_the_algorithm_report_load(client) -> None:
     page = client.get("/")
     assert page.status_code == 200
-    assert "post-quantum forensic watermarking" in page.text
+    assert "Post-Quantum Forensic Watermarking" in page.text
+
+    # Every control the front-end script drives must exist in the markup. Pinning the
+    # ids rather than the prose means the page can be restyled freely, and a redesign
+    # that drops a button still fails here instead of in front of an audience.
+    for element_id in (
+        "algs", "n", "bEnroll", "oEnroll", "carrier", "coalition", "doc", "bProtect",
+        "oProtect", "who", "bOpen", "bProve", "oOpen", "leak", "file", "bTrace",
+        "bTraceFile", "c1", "c2", "c3", "strategy", "bCollude", "oTrace",
+        "bAudit", "bTamper", "bRestore", "oAudit", "s1", "s2", "s3", "s4", "s5",
+    ):
+        assert f'id="{element_id}"' in page.text, f"the page is missing #{element_id}"
 
     info = client.get("/api/info").json()
     assert info["algorithms"]["kem"] == "ML-KEM-768"
