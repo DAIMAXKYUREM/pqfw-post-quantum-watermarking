@@ -35,7 +35,10 @@ def build() -> list[Path]:
     shutil.copytree(ROOT / "src", STAGE / "src", ignore=EXCLUDE)
     shutil.copytree(ROOT / "web", STAGE / "web", ignore=EXCLUDE)
     shutil.copy2(DEPLOY / "Dockerfile", STAGE / "Dockerfile")
-    shutil.copy2(DEPLOY / "requirements.txt", STAGE / "requirements.txt")
+    # Mirrors the repo layout: the Dockerfile is written for a repo-root build
+    # context, so requirements.txt has to sit at deploy/ here too.
+    (STAGE / "deploy").mkdir(exist_ok=True)
+    shutil.copy2(DEPLOY / "requirements.txt", STAGE / "deploy" / "requirements.txt")
     shutil.copy2(DEPLOY / "SPACE_README.md", STAGE / "README.md")
     (STAGE / ".gitattributes").write_text("* -text\n", encoding="utf-8")
 

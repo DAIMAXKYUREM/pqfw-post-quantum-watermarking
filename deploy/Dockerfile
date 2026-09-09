@@ -48,8 +48,10 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app/src \
     HOME=/tmp
 
+# Build context is the repository root, so paths here are repo-relative. The HF
+# Space staging directory in build_space.py mirrors that layout for the same reason.
 WORKDIR /app
-COPY requirements.txt .
+COPY deploy/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/ /app/src/
