@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pqfw"
+version = "0.1.0"
+description = "Post-quantum forensic watermarking: variant-keyed broadcast encryption with Tardos fingerprint tracing"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "cryptography>=42",
+    "liboqs-python>=0.10",
+    "reportlab>=4.0",
+    "pikepdf>=8.0",
+    "qrcode[pil]>=7.4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "matplotlib>=3.8"]
+web = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "python-multipart>=0.0.9"]
+
+[project.scripts]
+pqfw = "pqfw.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"pqfw" = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+filterwarnings = ["ignore::DeprecationWarning"]
+markers = ["slow: statistical tests over many trials"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
