@@ -17,6 +17,7 @@ from pqfw import ledger as L
 from pqfw import package as pkg
 from pqfw import pqc, tardos
 from pqfw.carrier import get_carrier
+from pqfw.carriers import pdf as _pdf_carrier  # noqa: F401  -- registers the carrier
 from pqfw.carriers import text as _text_carrier  # noqa: F401  -- registers the carrier
 from pqfw.store import DocRecord, Store
 from pqfw.trace import TraceReport, trace
