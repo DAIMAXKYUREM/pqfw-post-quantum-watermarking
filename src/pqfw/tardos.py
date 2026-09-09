@@ -92,6 +92,19 @@ class TardosCode:
     def codeword(self, recipient_index: int) -> np.ndarray:
         return self.X[recipient_index]
 
+    def duplicate_groups(self) -> list[list[int]]:
+        """Recipients who were issued byte-identical codewords.
+
+        Two such recipients receive byte-identical documents and are indistinguishable
+        for ever: no amount of evidence separates them, because there is no evidence to
+        separate. This is the one tracing failure that produces no symptom at trace
+        time -- the score is simply tied -- so it is caught at issue time instead.
+        """
+        seen: dict[bytes, list[int]] = {}
+        for j in range(self.params.n):
+            seen.setdefault(self.X[j].tobytes(), []).append(j)
+        return [group for group in seen.values() if len(group) > 1]
+
     def __repr__(self) -> str:
         # Never print p or X. A traced accusation is only credible if the codewords
         # were not lying around in a log file.
@@ -144,15 +157,44 @@ def code_length(c: int, eps1: float, constant: float = 100.0) -> int:
     return int(math.ceil(constant * c * c * math.log(1.0 / eps1)))
 
 
-def generate(params: TardosParams, rng: np.random.Generator) -> TardosCode:
-    """Draw the biases and every recipient's codeword."""
+def generate(
+    params: TardosParams,
+    rng: np.random.Generator,
+    ensure_distinct: bool = True,
+    max_passes: int = 64,
+) -> TardosCode:
+    """Draw the biases and every recipient's codeword.
+
+    ``ensure_distinct`` redraws any recipient who happens to collide with an earlier
+    one. The arcsine biases sit close to 0 and 1 by design, so codewords agree far
+    more often than uniform coin flips would, and with a short code two recipients
+    colliding is not a curiosity -- it is a permanent hole in the audit trail.
+
+    Resampling only the colliding rows conditions the code on distinctness. When
+    collisions are rare, which is the regime any usable code length puts you in, the
+    effect on the score distribution is negligible; when they are common the code was
+    already too short to trace with, and this raises instead of pretending otherwise.
+    """
     t = 1.0 / (300 * params.c)
     t_prime = math.asin(math.sqrt(t))
     r = rng.uniform(t_prime, math.pi / 2 - t_prime, size=params.m)
     p = np.sin(r) ** 2
 
     X = (rng.random((params.n, params.m)) < p).astype(np.uint8)
-    return TardosCode(params=params, p=p, X=X)
+    code = TardosCode(params=params, p=p, X=X)
+    if not ensure_distinct:
+        return code
+
+    for _ in range(max_passes):
+        duplicates = [j for group in code.duplicate_groups() for j in group[1:]]
+        if not duplicates:
+            return code
+        X[duplicates] = (rng.random((len(duplicates), params.m)) < p).astype(np.uint8)
+    raise ValueError(
+        f"could not issue {params.n} distinct codewords in {params.m} slots after "
+        f"{max_passes} passes: the code is too short for this many recipients. "
+        f"Increase m (see code_length) or reduce n."
+    )
 
 
 # ---------------------------------------------------------------------------
