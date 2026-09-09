@@ -11,3 +11,4 @@ state/
 demo_state/
 *.qr.png
 .env
+deploy/.space/

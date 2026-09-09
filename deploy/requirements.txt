@@ -1,0 +1,11 @@
+# Runtime only. matplotlib, pytest and pypdfium2 are development dependencies and are
+# deliberately absent: the demo does not plot, test or rasterise anything.
+numpy>=1.26
+cryptography>=42
+liboqs-python==0.16.0
+reportlab>=4.0
+pikepdf>=8.0
+qrcode[pil]>=7.4
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
