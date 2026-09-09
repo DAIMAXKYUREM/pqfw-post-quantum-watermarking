@@ -158,6 +158,11 @@ def cmd_protect(args: argparse.Namespace) -> int:
     field("doc id", result.doc_id)
     field("carrier", args.carrier)
     field("recipients", result.recipients)
+    field(
+        "decryption credentials",
+        f"{result.sessions}  ({result.sessions_per_recipient} per recipient, "
+        f"each with its own codeword)",
+    )
     field("mark slots", f"{result.m}")
     if result.capped:
         print(
@@ -215,6 +220,8 @@ def cmd_open(args: argparse.Namespace) -> int:
             {
                 "doc_id": result.doc_id,
                 "recipient_id": result.recipient_id,
+                "session_id": result.session_id,
+                "sessions_left": result.sessions_left,
                 "doc_hash": result.doc_hash,
                 "ledger_seq": result.ledger_seq,
                 "entry_hash": result.entry_hash,
@@ -227,6 +234,7 @@ def cmd_open(args: argparse.Namespace) -> int:
 
     rule("open")
     field("recipient", args.recipient)
+    field("session", f"{result.session_id}   ({result.sessions_left} credentials left)")
     field("doc id", args.doc_id)
     field("written to", f"{out}  ({len(result.document):,} bytes)")
     field("copy hash", result.doc_hash[:32] + dim("..."))
@@ -237,7 +245,9 @@ def cmd_open(args: argparse.Namespace) -> int:
     print(
         dim(
             "  this copy carries a fingerprint that its holder could not decline: they\n"
-            "  hold one variant key per slot and cannot decrypt the other rendering"
+            "  hold one variant key per slot and cannot decrypt the other rendering.\n"
+            "  Opening again spends the next credential and yields a different mark, so a\n"
+            "  leak resolves to this decryption rather than merely to this person."
         )
     )
     return 0
@@ -266,6 +276,7 @@ def cmd_trace(args: argparse.Namespace) -> int:
     a = report.accused.accusation
     headline = f"{bold(report.accused.recipient_id)}"
     print(f"  {'best match'.ljust(22)} {headline}")
+    field("decryption session", report.accused.session_id)
     field("z-score", f"{a.z_score:.2f} sigma")
     field("false-accusation", bold(fmt_p(a.p_bound, a.log10_p_bound)) + "   provable bound")
     field("", dim(fmt_p(a.p_value, a.log10_p_value) + "   Gaussian approximation, for reference"))
@@ -319,6 +330,11 @@ def cmd_audit(args: argparse.Namespace) -> int:
     store = Store.open(args.state)
 
     restored = workflow.restore(store) if args.restore else False
+    healed = workflow.heal_validators(store) if (args.heal or args.restore) else None
+
+    compromised = None
+    if args.compromise is not None:
+        compromised = workflow.compromise_validator(store, args.compromise)
 
     tampered = None
     if args.tamper is not None:
@@ -338,6 +354,10 @@ def cmd_audit(args: argparse.Namespace) -> int:
             anchors.append(str(path))
     info["anchors"] = anchors
     info["restored"] = restored
+    if compromised:
+        info["compromised"] = compromised
+    if healed:
+        info["healed"] = healed
     if tampered:
         info["tampered"] = tampered
 
@@ -346,6 +366,18 @@ def cmd_audit(args: argparse.Namespace) -> int:
         return 0 if info["ok"] else 1
 
     rule("audit")
+    if compromised:
+        print(
+            yellow(
+                f"  took over validator {compromised['node']} and rewrote receipt "
+                f"{compromised['seq']} in that replica only"
+            )
+        )
+        print(dim("    a single compromised account -- the attack the requirement names"))
+        print()
+    if healed and healed.get("healed"):
+        print(green(f"  re-synced validator(s) {healed['healed']} from the honest quorum"))
+        print()
     if restored:
         print(green("  restored the pre-tamper ledger from its pristine copy"))
         print()
@@ -360,9 +392,42 @@ def cmd_audit(args: argparse.Namespace) -> int:
         print(dim(f"    now  {tampered['after']}"))
         print()
 
+    consensus = info.get("consensus")
+    if consensus:
+        print("  " + dim("distributed ledger"))
+        field(
+            "validators",
+            f"{consensus['nodes']} independent replicas, "
+            f"{consensus['quorum']}-of-{consensus['nodes']} to commit, height {consensus['height']}",
+        )
+        for node in range(consensus["nodes"]):
+            diverged = node in consensus["diverged"]
+            invalid = node not in consensus["valid"]
+            state = (
+                "signature check failed"
+                if invalid
+                else ("diverged from the majority" if diverged else "in agreement")
+            )
+            head = str(consensus["node_heads"][str(node)])[:16]
+            print(f"    {mark(not (diverged or invalid))} validator {node}  {state:<26} {dim(head + '...')}")
+        print(
+            f"    {mark(consensus['honest_majority'])} "
+            + (
+                "an honest quorum still stands: one compromised validator changes nothing"
+                if consensus["honest_majority"]
+                else red("the honest quorum is gone; this ledger cannot be trusted")
+            )
+        )
+        for problem in consensus.get("problems", [])[:3]:
+            print(red(f"      {problem}"))
+        print()
+
     chain = info["chain"]
     field("entries", info["entries"])
-    print(f"  {'hash chain'.ljust(22)} {mark(chain['ok'])} " + ("intact" if chain["ok"] else red("BROKEN")))
+    print(
+        f"  {'local hash chain'.ljust(22)} {mark(chain['ok'])} "
+        + ("intact" if chain["ok"] else red("BROKEN"))
+    )
     if not chain["ok"]:
         field("first bad entry", red(f"seq {chain['first_bad_seq']}"))
         for problem in chain["problems"][:6]:
@@ -457,6 +522,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--checkpoint", action="store_true", help="cut a new witness checkpoint first")
     p.add_argument("--tamper", type=int, default=None, metavar="SEQ",
                    help="deliberately corrupt an entry, to demonstrate detection")
+    p.add_argument("--compromise", type=int, default=None, metavar="NODE",
+                   help="take over one validator and rewrite a receipt in its replica only")
+    p.add_argument("--heal", action="store_true",
+                   help="re-sync compromised replicas from the honest quorum")
     p.add_argument("--tamper-field", default="doc_hash")
     p.add_argument("--restore", action="store_true",
                    help="undo a previous --tamper, so the demo can be repeated")
