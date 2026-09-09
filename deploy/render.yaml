@@ -1,0 +1,27 @@
+# Render blueprint. Free instance type, Docker runtime.
+#
+# Render is here because Hugging Face closed the free tier for Docker Spaces: static
+# Spaces stay free for everyone, but anything that runs a server now needs PRO. PQFW
+# needs a server -- the whole point is that the real liboqs does the work rather than a
+# reimplementation in the browser.
+#
+# Deploy: push this repo to GitHub, then at dashboard.render.com pick
+# New -> Blueprint and select it. Render reads this file and needs nothing else.
+#
+# The free instance sleeps after 15 minutes idle and takes ~30 seconds to wake, so give
+# it a moment before a demo. Health checks keep it honest but do not keep it awake.
+
+services:
+  - type: web
+    name: pqfw
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./deploy/Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      # The container listens on 7860; Render injects PORT, so keep them aligned.
+      - key: PORT
+        value: 7860

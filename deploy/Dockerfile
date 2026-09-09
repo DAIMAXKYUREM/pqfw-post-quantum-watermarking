@@ -8,6 +8,12 @@
 # OQS_MINIMAL_BUILD compiles only the two mechanisms this project declares. That cuts
 # the build from minutes to seconds and the image by a few hundred megabytes -- and it
 # means the container physically cannot fall back to some other algorithm.
+#
+# OQS_DIST_BUILD is not optional for a container. Without it liboqs is compiled for the
+# micro-architecture of whatever machine built the image and dispatches to, say, AVX2
+# routines unconditionally; a host with an older CPU then dies on an illegal
+# instruction. With it, the dispatch happens at run time via CPU feature detection.
+# Build and run machines are rarely the same box on a free tier.
 
 FROM python:3.11-slim AS liboqs
 
@@ -23,6 +29,7 @@ RUN git clone --depth 1 --branch "$LIBOQS_VERSION" \
         -DBUILD_SHARED_LIBS=ON \
         -DOQS_BUILD_ONLY_LIB=ON \
         -DOQS_MINIMAL_BUILD="KEM_ml_kem_768;SIG_ml_dsa_65" \
+        -DOQS_DIST_BUILD=ON \
         -DCMAKE_INSTALL_PREFIX=/opt/oqs \
     && cmake --build /tmp/build --parallel 4 \
     && cmake --install /tmp/build \
@@ -61,8 +68,12 @@ print('liboqs', oqs.oqs_version(), 'ML-KEM-768 and ML-DSA-65 available')" \
 RUN useradd -m -u 1000 pqfw && chown -R pqfw /app
 USER pqfw
 
+ENV PORT=7860
 EXPOSE 7860
 HEALTHCHECK --interval=60s --timeout=5s --start-period=20s \
-  CMD python -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:7860/api/health')"
+  CMD python -c "import os,urllib.request;urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('PORT','7860')+'/api/health')"
 
-CMD ["python", "-m", "uvicorn", "app:app", "--app-dir", "/app/web", "--host", "0.0.0.0", "--port", "7860"]
+# Shell form so ${PORT} expands: Render, Koyeb and Cloud Run all inject the port they
+# expect the process to bind, and a hard-coded 7860 makes the health check fail on all
+# three. HF Spaces sets no PORT, so the default stands.
+CMD python -m uvicorn app:app --app-dir /app/web --host 0.0.0.0 --port ${PORT:-7860}

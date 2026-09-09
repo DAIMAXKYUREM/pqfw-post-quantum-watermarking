@@ -7,7 +7,7 @@ sdk: docker
 app_port: 7860
 pinned: false
 license: mit
-short_description: Encrypt once for N recipients; each copy is uniquely fingerprinted by key possession, and a leak traces back with a provable error bound.
+short_description: One encryption, N fingerprints, enforced by key possession
 ---
 
 # PQFW — Post-Quantum Forensic Watermarking
