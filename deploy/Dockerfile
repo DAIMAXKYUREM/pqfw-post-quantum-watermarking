@@ -9,6 +9,17 @@
 # the build from minutes to seconds and the image by a few hundred megabytes -- and it
 # means the container physically cannot fall back to some other algorithm.
 #
+# OQS_USE_OPENSSL defaults to ON and makes cmake scan for OpenSSL >= 1.1.1. The slim
+# Python image ships libssl at *runtime* but not the development headers, so configure
+# fails with "Could NOT find OpenSSL" -- several minutes into a remote build, with a
+# message that does not obviously point at a missing apt package. Turning it OFF costs
+# nothing here: it only governs AES and SHA-2, and ML-KEM and ML-DSA are Keccak-based
+# (OQS_USE_SHA3_OPENSSL is OFF by default anyway). It also leaves the shared library
+# with no libcrypto dependency, so the runtime stage needs nothing extra either.
+#
+# CMAKE_INSTALL_LIBDIR is pinned because GNUInstallDirs can resolve to
+# lib/x86_64-linux-gnu on Debian, and the COPY below would then find an empty lib/.
+#
 # OQS_DIST_BUILD is not optional for a container. Without it liboqs is compiled for the
 # micro-architecture of whatever machine built the image and dispatches to, say, AVX2
 # routines unconditionally; a host with an older CPU then dies on an illegal
@@ -30,9 +41,12 @@ RUN git clone --depth 1 --branch "$LIBOQS_VERSION" \
         -DOQS_BUILD_ONLY_LIB=ON \
         -DOQS_MINIMAL_BUILD="KEM_ml_kem_768;SIG_ml_dsa_65" \
         -DOQS_DIST_BUILD=ON \
+        -DOQS_USE_OPENSSL=OFF \
+        -DCMAKE_INSTALL_LIBDIR=lib \
         -DCMAKE_INSTALL_PREFIX=/opt/oqs \
     && cmake --build /tmp/build --parallel 4 \
     && cmake --install /tmp/build \
+    && test -f /opt/oqs/lib/liboqs.so \
     && rm -rf /tmp/liboqs /tmp/build
 
 

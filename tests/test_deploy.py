@@ -96,6 +96,33 @@ def test_the_image_pins_only_the_declared_pqc_mechanisms() -> None:
     )
 
 
+def test_the_image_does_not_depend_on_openssl_headers() -> None:
+    """The first Render build failed on this.
+
+    OQS_USE_OPENSSL defaults to ON and makes cmake scan for OpenSSL >= 1.1.1. A slim
+    Python base image carries libssl at runtime but not the development headers, so
+    configure dies with "Could NOT find OpenSSL" several minutes into a remote build.
+    Turning it off costs nothing for ML-KEM and ML-DSA, which are Keccak-based.
+    """
+    text = DOCKERFILE.read_text(encoding="utf-8")
+    installs_headers = "libssl-dev" in text
+    disables_openssl = "-DOQS_USE_OPENSSL=OFF" in text
+    assert disables_openssl or installs_headers, (
+        "either disable OQS_USE_OPENSSL or install libssl-dev; the default needs headers "
+        "the slim image does not have"
+    )
+
+
+def test_the_library_lands_where_the_runtime_stage_copies_from() -> None:
+    """GNUInstallDirs can resolve to lib/x86_64-linux-gnu on Debian, which would leave
+    the COPY finding an empty lib/ and the failure surfacing only at import."""
+    text = DOCKERFILE.read_text(encoding="utf-8")
+    assert "-DCMAKE_INSTALL_LIBDIR=lib" in text
+    assert "test -f /opt/oqs/lib/liboqs.so" in text, (
+        "the builder stage must fail if the shared library is not where it is expected"
+    )
+
+
 def test_runtime_requirements_exclude_development_dependencies() -> None:
     # Comments are stripped first: the file explains which dev dependencies are
     # deliberately absent, and naming them is not the same as depending on them.
