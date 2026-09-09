@@ -293,6 +293,31 @@ def log10_p_value_for_z(z: float, n: int) -> float:
     return min(0.0, math.log10(n) + _log10_sf(z))
 
 
+def expected_traitor_score(code: TardosCode) -> float:
+    """The score a single leaker's own copy is expected to produce.
+
+    For y = X[j], slot i contributes +g1 with probability p_i and +g0 with probability
+    1 - p_i, so its expectation is 2*sqrt(p_i (1 - p_i)). Summed over the actual biases
+    rather than over their asymptotic mean, because this is used to tell an operator
+    what a specific code length can and cannot deliver.
+    """
+    p = code.p
+    return float(np.sum(2.0 * np.sqrt(p * (1.0 - p))))
+
+
+def achievable_eps(code: TardosCode) -> float:
+    """The best false-accusation probability this code length can be expected to reach.
+
+    A document only holds so many slots. When the carrier caps the code below what the
+    requested eps1 needs, this is the number that is actually on offer -- reporting it
+    up front is the difference between weaker evidence and a surprise at trace time.
+    """
+    if code.params.m == 0:
+        return 1.0
+    z = expected_traitor_score(code) / math.sqrt(code.params.m)
+    return p_value_for_z(z, code.params.n)
+
+
 def rank(code: TardosCode, y: Sequence[int | None] | np.ndarray) -> list[Accusation]:
     """Every recipient scored and sorted, most suspicious first.
 

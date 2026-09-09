@@ -35,6 +35,10 @@ class ProtectResult:
     recipients: int
     package_path: str
     size: dict[str, int]
+    achievable_eps: float
+    """Best false-accusation probability the achieved code length can be expected to
+    reach against a single leaker. When the carrier caps the code, this is the number
+    that is actually on offer rather than the one that was asked for."""
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -46,6 +50,7 @@ class ProtectResult:
             "recipients": self.recipients,
             "package": self.package_path,
             "size": self.size,
+            "achievable_eps": self.achievable_eps,
         }
 
 
@@ -164,6 +169,7 @@ def protect(
         recipients=len(recipient_ids),
         package_path=str(store.package_path(doc_id)),
         size=package.size_report(),
+        achievable_eps=tardos.achievable_eps(code),
     )
 
 
@@ -229,23 +235,40 @@ def audit(store: Store) -> dict[str, Any]:
     chain = ledger.verify_chain()
     witness_pks = store.witness_public_keys()
     threshold = store.state.witness_threshold
-    return {
-        "entries": chain.entries,
-        "chain": chain.to_json(),
-        "witness_threshold": threshold,
-        "witnesses_enrolled": len(witness_pks),
-        "checkpoints": [
+
+    checkpoints = []
+    for cp in ledger.checkpoints:
+        witnesses = L.Ledger.count_witnesses(cp, witness_pks)
+        covered = [e for e in ledger.entries if cp.from_seq <= e.seq <= cp.to_seq]
+        # Recompute from the entries' *contents*, not their stored hashes. A stored
+        # hash that has gone stale is caught by the chain check; entries removed from
+        # the end are not, and this is what sees them: the signed root still covers
+        # them and the recomputed root no longer can.
+        expected_count = cp.to_seq - cp.from_seq + 1
+        recomputed = L.merkle_root([e.compute_hash() for e in covered])
+        checkpoints.append(
             {
                 "index": cp.index,
                 "range": [cp.from_seq, cp.to_seq],
                 "root": cp.root,
                 "at": cp.at,
-                "witnesses": L.Ledger.count_witnesses(cp, witness_pks),
-                "valid": L.Ledger.count_witnesses(cp, witness_pks) >= threshold,
+                "witnesses": witnesses,
+                "valid": witnesses >= threshold,
+                "covers_entries": len(covered),
+                "covers_expected": expected_count,
+                "root_matches_entries": len(covered) == expected_count
+                and recomputed == cp.root,
                 "anchor": L.checkpoint_anchor(cp),
             }
-            for cp in ledger.checkpoints
-        ],
+        )
+
+    return {
+        "entries": chain.entries,
+        "chain": chain.to_json(),
+        "witness_threshold": threshold,
+        "witnesses_enrolled": len(witness_pks),
+        "checkpoints": checkpoints,
+        "ok": chain.ok and all(c["valid"] and c["root_matches_entries"] for c in checkpoints),
         "algorithms": pqc.alg_report(),
     }
 
@@ -260,6 +283,11 @@ def tamper(store: Store, seq: int, field: str = "doc_hash") -> dict[str, Any]:
     ledger = store.ledger()
     if not 0 <= seq < len(ledger.entries):
         raise IndexError(f"no ledger entry {seq}; the ledger holds {len(ledger.entries)}")
+
+    backup = store.ledger_path.with_suffix(".json.pristine")
+    if not backup.exists():
+        backup.write_bytes(store.ledger_path.read_bytes())
+
     before = ledger.entries[seq].record.get(field)
     ledger.entries[seq].record[field] = pqc.sha3_hex(f"tampered:{before}".encode())
     store.save_ledger(ledger)
@@ -268,7 +296,23 @@ def tamper(store: Store, seq: int, field: str = "doc_hash") -> dict[str, Any]:
         "field": field,
         "before": before,
         "after": ledger.entries[seq].record[field],
+        "backup": str(backup),
     }
+
+
+def restore(store: Store) -> bool:
+    """Put back the pre-tamper ledger, so the demo can be run twice.
+
+    Only ever restores a copy this process took before corrupting the file. There is
+    no way to repair a genuinely tampered ledger: the recipient signatures cannot be
+    reproduced without the recipients' keys, which is the entire point.
+    """
+    backup = store.ledger_path.with_suffix(".json.pristine")
+    if not backup.exists():
+        return False
+    store.ledger_path.write_bytes(backup.read_bytes())
+    backup.unlink()
+    return True
 
 
 def _b64d(text: str) -> bytes:
