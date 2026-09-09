@@ -14,3 +14,6 @@ demo_state/
 deploy/.space/
 deploy/.static/
 demo/leaked.*
+ppt/render/
+ppt/tmpl-render/
+ppt/*.pdf
