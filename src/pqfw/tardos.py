@@ -344,7 +344,16 @@ class TailBound:
     scored, so they are built once here and reused for all n.
     """
 
-    __slots__ = ("_hi", "_lo", "_log_prob_hi", "_log_prob_lo", "_m_eff", "_n", "_max_score")
+    __slots__ = (
+        "_hi",
+        "_lo",
+        "_log_prob_hi",
+        "_log_prob_lo",
+        "_m_eff",
+        "_n",
+        "_max_score",
+        "_log_prob_all_max",
+    )
 
     def __init__(self, code: TardosCode, yv: np.ndarray) -> None:
         readable = ~np.isnan(yv)
@@ -360,7 +369,18 @@ class TailBound:
         self._log_prob_lo = np.log1p(-p)
         self._m_eff = int(readable.sum())
         self._n = code.params.n
-        self._max_score = float(np.maximum(self._hi, self._lo).sum())
+
+        # The largest score this code can produce against this y, and the exact
+        # probability of an innocent recipient producing it: every slot has to fall the
+        # favourable way, independently. This is the answer at the top of the range,
+        # where the Chernoff minimisation is at its weakest -- and it is not a rare
+        # corner. A single leaker's own copy scores *exactly* the maximum, because
+        # every one of their bits agrees with what was extracted.
+        take_hi = self._hi >= self._lo
+        self._max_score = float(np.where(take_hi, self._hi, self._lo).sum())
+        self._log_prob_all_max = float(
+            np.where(take_hi, self._log_prob_hi, self._log_prob_lo).sum()
+        )
 
     @property
     def m_eff(self) -> int:
@@ -385,15 +405,24 @@ class TailBound:
         """
         if self._m_eff == 0 or threshold <= 0.0:
             return 0.0
-        if threshold > self._max_score:
-            return -math.inf  # unreachable even if every slot went the same way
 
         correction = math.log(self._n)
+
+        # At (or, through floating-point slop, just above) the maximum achievable
+        # score, the only way to get there is for every slot to fall the same way, and
+        # that probability is exact. Returning it here rather than -inf matters twice
+        # over: -inf would claim a false-accusation probability of exactly zero, which
+        # is false, and it does not survive a JSON round trip.
+        slack = 1e-9 * max(1.0, abs(self._max_score))
+        if threshold >= self._max_score - slack:
+            return max(
+                _LOG10_FLOOR, min(0.0, (self._log_prob_all_max + correction) / math.log(10.0))
+            )
         # For a sum of unit-variance terms the optimal lambda sits near t / variance.
         seed = max(threshold / self._m_eff, 1e-9)
         best = self._log_tail(seed, threshold)
         if not refine:
-            return min(0.0, (best + correction) / math.log(10.0))
+            return max(_LOG10_FLOOR, min(0.0, (best + correction) / math.log(10.0)))
 
         # _log_tail is convex in lambda: bracket around the seed, then ternary search.
         lo, hi = seed / 64.0, seed * 64.0
@@ -405,7 +434,7 @@ class TailBound:
             else:
                 lo = a
         best = min(best, self._log_tail((lo + hi) / 2.0, threshold))
-        return min(0.0, (best + correction) / math.log(10.0))
+        return max(_LOG10_FLOOR, min(0.0, (best + correction) / math.log(10.0)))
 
 
 def chernoff_log10_bound(
@@ -458,6 +487,14 @@ def achievable_eps(code: TardosCode) -> float:
     z = expected_traitor_score(code) / math.sqrt(code.params.m)
     return p_value_for_z(z, code.params.n)
 
+
+_LOG10_FLOOR = -1e6
+"""Floor for a reported log10 bound.
+
+Not a numerical trick: the point is that every number this module reports must be a
+finite float. A JSON payload carrying Infinity is not JSON, and a front end that
+receives one crashes instead of rendering an accusation.
+"""
 
 BOUND_GATE = 1e-3
 """Stop computing exact bounds once one exceeds this.

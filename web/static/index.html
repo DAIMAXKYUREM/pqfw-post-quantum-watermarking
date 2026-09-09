@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PQFW — Post-Quantum Forensic Watermarking</title>
+<style>
+  :root {
+    --bg: #0e1116; --panel: #161b22; --panel2: #1c232c; --line: #2a3341;
+    --ink: #e6edf3; --dim: #8b98a5; --accent: #58a6ff; --good: #3fb950;
+    --bad: #f85149; --warn: #d29922; --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  a { color: var(--accent); }
+  header {
+    padding: 34px 24px 26px; border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, #131922, #0e1116);
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; }
+  h1 { margin: 0 0 6px; font-size: 25px; letter-spacing: -0.2px; }
+  h1 span { color: var(--dim); font-weight: 400; }
+  .sub { color: var(--dim); max-width: 74ch; margin: 0 0 16px; }
+  .algs { display: flex; flex-wrap: wrap; gap: 7px; }
+  .chip {
+    font: 11px/1 var(--mono); padding: 6px 9px; border-radius: 999px;
+    background: #1b2430; border: 1px solid var(--line); color: var(--dim);
+  }
+  .chip b { color: var(--ink); font-weight: 600; }
+  main { padding: 26px 24px 80px; }
+  section {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 20px 22px; margin-bottom: 18px;
+  }
+  section.off { opacity: 0.45; pointer-events: none; }
+  h2 { margin: 0 0 4px; font-size: 16px; display: flex; align-items: center; gap: 10px; }
+  .num {
+    width: 24px; height: 24px; flex: 0 0 24px; border-radius: 50%; background: #21313f;
+    color: var(--accent); font: 600 12px/24px var(--mono); text-align: center;
+  }
+  .why { color: var(--dim); font-size: 13.5px; margin: 0 0 14px 34px; max-width: 82ch; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-left: 34px; }
+  label { font-size: 13px; color: var(--dim); }
+  input, select, textarea, button {
+    font-family: inherit; font-size: 14px; color: var(--ink);
+    background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px;
+  }
+  textarea { width: 100%; min-height: 130px; font: 12.5px/1.5 var(--mono); resize: vertical; }
+  input[type=number] { width: 78px; }
+  button {
+    cursor: pointer; background: #21313f; border-color: #2f4356; color: var(--ink); font-weight: 500;
+  }
+  button:hover:not(:disabled) { background: #2b3f52; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.primary { background: #1f6feb; border-color: #388bfd; }
+  button.primary:hover:not(:disabled) { background: #2b7ef5; }
+  button.danger { background: #4a1f1f; border-color: #6e2a2a; }
+  .out { margin: 14px 0 0 34px; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; font-size: 13.5px; }
+  .kv dt { color: var(--dim); }
+  .kv dd { margin: 0; font-family: var(--mono); font-size: 12.5px; word-break: break-all; }
+  .note {
+    font-size: 12.5px; color: var(--dim); border-left: 2px solid var(--line);
+    padding-left: 11px; margin-top: 12px;
+  }
+  .warnbox {
+    background: #2a2110; border: 1px solid #4a3a12; color: #e8d6a8;
+    border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-top: 12px;
+  }
+  .verdict { border-radius: 10px; padding: 14px 16px; margin-top: 14px; border: 1px solid; }
+  .verdict.id { background: #10261a; border-color: #2a6b3c; }
+  .verdict.no { background: #2a1414; border-color: #6e2a2a; }
+  .verdict.un { background: #2a2110; border-color: #6b5320; }
+  .verdict h3 { margin: 0 0 4px; font-size: 17px; }
+  .checks { list-style: none; padding: 0; margin: 12px 0 0; font-size: 13.5px; }
+  .checks li { padding: 2px 0; }
+  .ok { color: var(--good); } .no { color: var(--bad); } .wa { color: var(--warn); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
+  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+  th { color: var(--dim); font-weight: 500; font-size: 12px; }
+  td.mono, th.mono { font-family: var(--mono); font-size: 12px; }
+  .pill { font: 11px/1 var(--mono); padding: 4px 7px; border-radius: 5px; background: #21313f; }
+  .zwsp { background: rgba(88,166,255,0.25); outline: 1px solid var(--accent); }
+  .err { color: var(--bad); font-size: 13px; margin-top: 10px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } .why, .row, .out { margin-left: 0; } }
+  footer { border-top: 1px solid var(--line); padding: 22px 24px 40px; color: var(--dim); font-size: 13px; }
+  code { font-family: var(--mono); font-size: 12.5px; background: #1b2430; padding: 1px 5px; border-radius: 4px; }
+  .spin { display: inline-block; width: 11px; height: 11px; border: 2px solid var(--dim);
+          border-top-color: transparent; border-radius: 50%; animation: sp 0.7s linear infinite; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>PQFW <span>— post-quantum forensic watermarking</span></h1>
+  <p class="sub">
+    One document, encrypted <em>once</em> for every recipient. Each recipient's decryption
+    produces a visually identical but uniquely fingerprinted copy — and the fingerprint is
+    enforced by <strong>which keys they hold</strong>, not by software that politely applies a
+    watermark. A leaked copy traces back to a recipient with a stated false-accusation
+    probability, corroborated by an append-only ledger.
+  </p>
+  <div class="algs" id="algs"><span class="chip">loading…</span></div>
+</div></header>
+
+<main class="wrap">
+
+  <section id="s1">
+    <h2><span class="num">1</span> Enrol recipients</h2>
+    <p class="why">
+      Each recipient gets an ML-KEM-768 key pair (to receive their key bundle) and an
+      ML-DSA-65 key pair (to sign a receipt when they decrypt). Three independent witnesses
+      are created for ledger checkpoints, two of which must sign for a checkpoint to count.
+    </p>
+    <div class="row">
+      <label for="n">Recipients</label>
+      <input type="number" id="n" value="12" min="2" max="30">
+      <button class="primary" id="bEnroll">Generate keys</button>
+    </div>
+    <div class="out" id="oEnroll"></div>
+  </section>
+
+  <section id="s2" class="off">
+    <h2><span class="num">2</span> Protect the document</h2>
+    <p class="why">
+      The document is split into a base body plus <em>m</em> mark slots. Each slot is rendered
+      two ways that look identical, and the two renderings are encrypted under
+      <em>different</em> keys. Both ship to everybody — the ciphertext below is byte-identical
+      for every recipient. Only a ~14 KB wrapped key bundle differs, and it decides which
+      rendering of each slot that person can decrypt.
+    </p>
+    <div class="row" style="margin-bottom:10px">
+      <label for="carrier">Carrier</label>
+      <select id="carrier">
+        <option value="text-zwsp">text — zero-width space in a word gap</option>
+        <option value="pdf-kern">PDF — 8/1000 em inter-word kern</option>
+      </select>
+      <label for="coalition">Coalition size</label>
+      <input type="number" id="coalition" value="3" min="1" max="8">
+      <button class="primary" id="bProtect">Encrypt once, for everyone</button>
+    </div>
+    <textarea id="doc" spellcheck="false"></textarea>
+    <div class="out" id="oProtect"></div>
+  </section>
+
+  <section id="s3" class="off">
+    <h2><span class="num">3</span> Decrypt as one recipient</h2>
+    <p class="why">
+      This runs the recipient's side: ML-KEM decapsulation, unwrap the bundle, decrypt one
+      variant per slot, then sign an ML-DSA-65 receipt that is appended to the hash-chained
+      ledger. The copy they get carries a fingerprint they could not have declined.
+    </p>
+    <div class="row">
+      <label for="who">Recipient</label>
+      <select id="who"></select>
+      <button class="primary" id="bOpen">Decrypt &amp; sign receipt</button>
+      <button id="bProve">Try to decrypt the other variant</button>
+    </div>
+    <div class="out" id="oOpen"></div>
+  </section>
+
+  <section id="s4" class="off">
+    <h2><span class="num">4</span> Trace a leak</h2>
+    <p class="why">
+      Paste or upload a leaked copy. The slots are read back, scored against every issued
+      codeword, and the result is reported with a <strong>provable</strong> upper bound on the
+      probability that an innocent recipient would score this highly — plus the ledger
+      evidence. A trace is only called conclusive when all five checks hold.
+    </p>
+    <div class="row" style="margin-bottom:10px">
+      <button class="primary" id="bTrace">Trace the pasted text</button>
+      <label for="file" style="margin-left:8px">or upload a file</label>
+      <input type="file" id="file">
+      <button id="bTraceFile">Trace the file</button>
+    </div>
+    <textarea id="leak" spellcheck="false" placeholder="Paste a leaked copy here — the copy from step 3 is loaded automatically."></textarea>
+    <div class="row" style="margin-top:10px">
+      <label>Or forge a colluding copy from</label>
+      <select id="c1"></select><select id="c2"></select><select id="c3"></select>
+      <select id="strategy">
+        <option value="majority">majority vote</option>
+        <option value="minority">minority vote</option>
+        <option value="interleaving">interleave</option>
+        <option value="coinflip">coin flip</option>
+        <option value="all_ones">all ones</option>
+      </select>
+      <button id="bCollude">Splice &amp; trace</button>
+    </div>
+    <div class="out" id="oTrace"></div>
+  </section>
+
+  <section id="s5" class="off">
+    <h2><span class="num">5</span> Audit the ledger</h2>
+    <p class="why">
+      Every decryption is a signed entry in a hash chain, checkpointed by a Merkle root that
+      two of three independent witnesses sign. The ledger stores only a salted
+      <em>commitment</em> to each codeword, never the codeword — so it could be published in
+      full without giving anyone the means to forge or strip a mark. Corrupt an entry and
+      watch what breaks.
+    </p>
+    <div class="row">
+      <button class="primary" id="bAudit">Verify chain &amp; checkpoints</button>
+      <button class="danger" id="bTamper">Corrupt entry 0</button>
+      <button id="bRestore">Restore</button>
+    </div>
+    <div class="out" id="oAudit"></div>
+  </section>
+
+</main>
+
+<footer class="wrap">
+  <p>
+    Real cryptography, running server-side: <code>liboqs</code> ML-KEM-768 and ML-DSA-65,
+    AES-256-GCM, SHA3-256, and a symmetric Tardos fingerprinting code. Nothing on this page is
+    pre-computed or simulated.
+  </p>
+  <p>
+    <strong>Known limits, stated deliberately.</strong> The text carrier does not survive
+    whitespace normalisation, retyping, OCR, or having a word inserted — the declared threat
+    model is redistribution of the file, a screenshot or a print, not manual reconstruction.
+    The distributor knows every codeword, so the guarantee is <em>traceability</em>, not
+    <em>unframeability</em>; asymmetric fingerprinting needs a post-quantum Paillier
+    substitute that does not yet exist. Every one of these is measured in the project's
+    evaluation harness, including the attacks that win.
+  </p>
+</footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const ZWSP = '​';
+
+const SAMPLE = `MINISTRY OF SOCIAL JUSTICE AND EMPOWERMENT
+INTERNAL ASSESSMENT NOTE -- RESTRICTED CIRCULATION
+
+Subject: Procurement review, financial year 2025-26, second quarter.
+
+This note is released to the distribution list at annexe A and to no other reader. It summarises findings from the quarterly review of tender processes across the four regional offices, together with the recommendations of the review committee and a provisional timetable for remedial action.
+
+FINDINGS
+
+One. Three of the fourteen tenders examined were awarded without a documented comparison against the published evaluation criteria. In each case the file contains a recommendation note but no scoring sheet. The absence of a scoring sheet does not by itself indicate irregularity, but it removes the ability to demonstrate that the award was made on the stated basis.
+
+Two. The average interval between the closing date and the award decision was sixty one days, against a service standard of thirty. Two awards exceeded one hundred days. Delay of this order materially advantages incumbent suppliers, who continue to be paid under extension arrangements while a decision is pending.
+
+Three. Two suppliers appear under slightly different registered names in the vendor master and were treated as distinct entities during evaluation. The review committee was not able to establish whether this affected the outcome of either tender, and recommends that the vendor master be deduplicated before the next cycle opens.
+
+RECOMMENDATIONS
+
+The committee recommends that scoring sheets be made a mandatory attachment at the point of award, that a standing exception report be produced for any award exceeding the service standard by more than fifty per cent, and that the vendor master be reconciled against the register of companies annually.
+
+A response to these recommendations is requested from each regional office within thirty working days of the date of this note. Recipients are reminded that this document is individually accountable to the person named on the distribution list and that its onward transmission, in whole or in part, is a breach of the terms under which it was released.`;
+
+$('doc').value = SAMPLE;
+
+let recipients = [];
+let lastCopy = null;
+
+async function api(path, body, isForm) {
+  const opts = { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin' };
+  if (body !== undefined) {
+    if (isForm) opts.body = body;
+    else { opts.headers = { 'Content-Type': 'application/json' }; opts.body = JSON.stringify(body); }
+  }
+  const r = await fetch(path, opts);
+  const text = await r.text();
+  let data; try { data = JSON.parse(text); } catch { data = { detail: text }; }
+  if (!r.ok) throw new Error(data.detail || ('HTTP ' + r.status));
+  return data;
+}
+
+function busy(btn, on) {
+  btn.disabled = on;
+  btn.dataset.label = btn.dataset.label || btn.textContent;
+  btn.innerHTML = on ? '<span class="spin"></span> working…' : btn.dataset.label;
+}
+function fail(el, e) { $(el).innerHTML = '<div class="err">' + esc(e.message) + '</div>'; }
+function enable(id) { $(id).classList.remove('off'); }
+function fmtP(p, log10) {
+  // Defensive: a bound strong enough to underflow arrives as 0 with the magnitude in
+  // log10. Anything unexpected must degrade to a readable string rather than throwing
+  // and blanking the whole report.
+  if (p === null || p === undefined || Number.isNaN(p)) return 'n/a';
+  if (p === 0) {
+    return Number.isFinite(log10) ? '< 1e-300 (log10 = ' + log10.toFixed(1) + ')' : '< 1e-300';
+  }
+  if (p < 1e-4) return p.toExponential(3);
+  return p.toFixed(6);
+}
+function num(v, digits) { return Number.isFinite(v) ? v.toFixed(digits) : '—'; }
+function bytes(n) { return n.toLocaleString() + ' B'; }
+
+// ---- info ----
+api('/api/info').then(d => {
+  const a = d.algorithms;
+  $('algs').innerHTML = [
+    ['key encapsulation', a.kem + ' (FIPS 203)'],
+    ['signatures', a.sig + ' (FIPS 204)'],
+    ['content', a.aead],
+    ['hash / KDF', a.hash + ' · HKDF'],
+    ['liboqs', a.liboqs],
+  ].map(([k, v]) => '<span class="chip">' + k + ' <b>' + esc(v) + '</b></span>').join('');
+});
+
+// ---- 1. enroll ----
+$('bEnroll').onclick = async () => {
+  busy($('bEnroll'), true);
+  try {
+    const d = await api('/api/enroll', { recipients: +$('n').value });
+    recipients = d.recipients;
+    for (const sel of ['who', 'c1', 'c2', 'c3']) {
+      $(sel).innerHTML = recipients.map(r => '<option>' + r + '</option>').join('');
+    }
+    $('c2').selectedIndex = 1; $('c3').selectedIndex = 2;
+    $('oEnroll').innerHTML =
+      '<dl class="kv">' +
+      '<dt>recipients</dt><dd>' + recipients.length + ' &middot; ' + recipients[0] + ' … ' + recipients[recipients.length - 1] + '</dd>' +
+      '<dt>witnesses</dt><dd>' + d.witnesses.length + ', ' + d.threshold + '-of-' + d.witnesses.length + ' required to sign a checkpoint</dd>' +
+      '<dt>witness key ids</dt><dd>' + d.witnesses.map(esc).join('<br>') + '</dd>' +
+      '</dl><div class="note">' + (recipients.length * 2) +
+      ' post-quantum key pairs generated. Each recipient’s private keys live in a directory standing in for their own device — the distributor never needs them.</div>';
+    enable('s2');
+  } catch (e) { fail('oEnroll', e); }
+  busy($('bEnroll'), false);
+};
+
+// ---- 2. protect ----
+$('bProtect').onclick = async () => {
+  busy($('bProtect'), true);
+  try {
+    const d = await api('/api/protect', {
+      document: $('doc').value, carrier: $('carrier').value,
+      coalition: +$('coalition').value, eps: 1e-6,
+    });
+    const capped = d.capped_by_carrier;
+    $('oProtect').innerHTML =
+      '<dl class="kv">' +
+      '<dt>mark slots</dt><dd>' + d.slots + ' of ' + d.carrier_capacity + ' available in this document</dd>' +
+      '<dt>shared ciphertext</dt><dd>' + bytes(d.size.public_bytes) + ' &mdash; <strong>identical for all ' + d.recipients + ' recipients</strong></dd>' +
+      '<dt>per recipient</dt><dd>' + bytes(d.size.per_recipient_bytes) + ' (ML-KEM ciphertext + wrapped bundle)</dd>' +
+      '<dt>best achievable</dt><dd>false-accusation probability ' + d.achievable_eps.toExponential(2) + ' against a single leaker</dd>' +
+      '</dl>' +
+      (capped ? '<div class="warnbox">The Tardos bound asks for <strong>' + d.slots_requested.toLocaleString() +
+        '</strong> slots at this coalition size and confidence; this document holds <strong>' + d.carrier_capacity +
+        '</strong>. The code is shortened rather than the requirement being quietly dropped — which costs confidence, not correctness: the reported probability is computed from the score actually observed. Here that still comes to ' +
+        d.achievable_eps.toExponential(2) + '.</div>' : '') +
+      '<div class="note">Each slot’s two renderings are encrypted under different keys. A recipient holds exactly one key per slot, so there is no unmarked copy anywhere in the system — not in the package, not in transit, not on the distributor’s disk.</div>';
+    enable('s3'); enable('s4'); enable('s5');
+  } catch (e) { fail('oProtect', e); }
+  busy($('bProtect'), false);
+};
+
+// ---- 3. open ----
+$('bOpen').onclick = async () => {
+  busy($('bOpen'), true);
+  try {
+    const d = await api('/api/open', { recipient: $('who').value });
+    lastCopy = d;
+    let marks = '';
+    if (d.preview !== null) {
+      const shown = esc(d.preview).split(ZWSP).join('<span class="zwsp">&nbsp;</span>');
+      marks = '<div class="note" style="margin-top:14px">The copy, with each invisible mark highlighted. Remove the highlighting and it is the original document, character for character.</div>' +
+        '<div style="max-height:190px;overflow:auto;background:#0f1520;border:1px solid var(--line);border-radius:8px;padding:11px;margin-top:8px;font:12px/1.7 var(--mono);white-space:pre-wrap">' + shown + '</div>';
+      $('leak').value = d.preview;
+    } else {
+      $('leak').value = '';
+      marks = '<div class="note" style="margin-top:14px">A PDF copy. Download it, then upload it in step 4 to trace it — or open it and confirm there is nothing to see.</div>';
+    }
+    $('oOpen').innerHTML =
+      '<dl class="kv">' +
+      '<dt>recipient</dt><dd>' + esc(d.recipient_id) + '</dd>' +
+      '<dt>their copy</dt><dd>' + bytes(d.bytes) + ' &middot; <a href="' + d.download + '">download</a></dd>' +
+      '<dt>SHA3-256</dt><dd>' + esc(d.doc_hash) + '</dd>' +
+      '<dt>ledger entry</dt><dd>seq ' + d.ledger_seq + ' &middot; ' + esc(d.entry_hash.slice(0, 40)) + '…</dd>' +
+      '</dl>' + marks;
+    if (d.preview !== null) $('leak').value = d.preview;
+  } catch (e) { fail('oOpen', e); }
+  busy($('bOpen'), false);
+};
+
+$('bProve').onclick = async () => {
+  busy($('bProve'), true);
+  try {
+    const d = await api('/api/prove-key-binding', { recipient: $('who').value, slot: Math.floor(Math.random() * 1000) });
+    const refused = !d.other_variant_decrypts;
+    $('oOpen').innerHTML =
+      '<div class="verdict ' + (refused ? 'id' : 'no') + '">' +
+      '<h3>' + (refused ? 'Refused — as it must be' : 'PROBLEM: the other variant decrypted') + '</h3>' +
+      '<div style="font-size:13.5px;color:var(--dim)">This is the project’s central security claim, run just now against this session’s real package.</div>' +
+      '<ul class="checks">' +
+      '<li class="ok">✓ slot ' + d.slot + ': the variant key ' + esc(d.recipient_id) + ' was issued opens rendering ' + d.variant_they_hold + '</li>' +
+      '<li class="' + (refused ? 'ok' : 'no') + '">' + (refused ? '✓' : '✗') + ' the same key against rendering ' + d.variant_they_do_not +
+      ': <strong>' + esc(d.other_variant_error || 'it decrypted') + '</strong></li>' +
+      '</ul>' +
+      '<div class="note" style="margin-top:10px">The AES-GCM tag check is the enforcement. There is no code path around a tag check, so patching the client does not help, and reverse-engineering it does not help — the bytes for the other rendering cannot be produced without a key this recipient was never given.</div>' +
+      '</div>';
+  } catch (e) { fail('oOpen', e); }
+  busy($('bProve'), false);
+};
+
+// ---- 4. trace ----
+function renderReport(d, extra) {
+  const a = d.accused;
+  const cls = d.verdict === 'IDENTIFIED' ? 'id' : (d.verdict === 'UNCORROBORATED' ? 'un' : 'no');
+  const L = d.ledger;
+  const check = (ok, text) => '<li class="' + (ok ? 'ok' : 'no') + '">' + (ok ? '✓' : '✗') + ' ' + text + '</li>';
+
+  let head = '<div class="verdict ' + cls + '"><h3>' + d.verdict +
+    (d.verdict === 'IDENTIFIED' ? ' — ' + esc(a.recipient_id) : '') + '</h3>';
+  if (a) {
+    head += '<div style="font-size:13.5px">' +
+      (d.verdict === 'IDENTIFIED'
+        ? 'False-accusation probability <strong>at most ' + fmtP(a.p_bound, a.log10_p_bound) + '</strong> — a provable bound, not an approximation.'
+        : 'Best match ' + esc(a.recipient_id) + ' at z = ' + num(a.z_score, 2) +
+          ', bound ' + fmtP(a.p_bound, a.log10_p_bound) + ' — not strong enough to name anybody at α = 1e-6.') +
+      '</div>';
+  }
+  head += '<ul class="checks">' +
+    check(d.statistically_significant, 'statistical significance (provable bound &lt; α)') +
+    check(L.receipt_signature_valid, 'the accused’s own ML-DSA-65 receipt verifies' + (L.seq !== null ? ' (ledger seq ' + L.seq + ')' : '')) +
+    check(L.chain_ok, 'ledger hash chain intact') +
+    check(L.checkpoint_valid, 'checkpoint witnesses ' + L.checkpoint_witnesses + '/' + L.checkpoint_required + ' required') +
+    check(L.inclusion_proof_valid, 'Merkle inclusion proof to the witness-signed root') +
+    '</ul>';
+  if (!d.conclusive && d.statistically_significant) {
+    head += '<div class="note" style="margin-top:10px">The marks match, but the ledger evidence does not stand up. That is a lead, not an identification — and the difference is the point.</div>';
+  }
+  head += '</div>';
+
+  let table = '<table><tr><th>recipient</th><th class="mono">z</th><th class="mono">raw score</th><th class="mono">false-accusation bound</th></tr>';
+  const all = (a ? [a] : []).concat(d.runners_up || []);
+  for (const s of all) {
+    table += '<tr><td>' + esc(s.recipient_id) + (s === a ? ' <span class="pill">best</span>' : '') + '</td>' +
+      '<td class="mono">' + num(s.z_score, 2) + '</td>' +
+      '<td class="mono">' + num(s.raw_score, 1) + '</td>' +
+      '<td class="mono">' + (s.p_bound_exact ? fmtP(s.p_bound, s.log10_p_bound) : 'not accusable') + '</td></tr>';
+  }
+  table += '</table>';
+
+  const notes = (d.notes || []).map(n => '<div class="note">' + esc(n) + '</div>').join('');
+  $('oTrace').innerHTML = (extra || '') + head +
+    '<dl class="kv" style="margin-top:14px"><dt>readable slots</dt><dd>' + d.m_eff + ' of ' + d.m +
+    '</dd><dt>α</dt><dd>' + d.alpha.toExponential(0) + '</dd></dl>' + table + notes;
+}
+
+$('bTrace').onclick = async () => {
+  busy($('bTrace'), true);
+  try { renderReport(await api('/api/trace-text', { leaked: $('leak').value })); }
+  catch (e) { fail('oTrace', e); }
+  busy($('bTrace'), false);
+};
+
+$('bTraceFile').onclick = async () => {
+  const f = $('file').files[0];
+  if (!f) { fail('oTrace', new Error('choose a file first')); return; }
+  busy($('bTraceFile'), true);
+  try {
+    const fd = new FormData(); fd.append('leaked', f);
+    renderReport(await api('/api/trace', fd, true));
+  } catch (e) { fail('oTrace', e); }
+  busy($('bTraceFile'), false);
+};
+
+$('bCollude').onclick = async () => {
+  busy($('bCollude'), true);
+  try {
+    const ids = [...new Set([$('c1').value, $('c2').value, $('c3').value])];
+    const d = await api('/api/collude', { recipients: ids, strategy: $('strategy').value });
+    const caught = d.caught.length > 0;
+    let html = '<div class="verdict ' + (caught ? 'id' : 'un') + '">' +
+      '<h3>' + (caught ? 'Colluder in the top three: ' + d.caught.map(esc).join(', ') : 'No colluder in the top three') + '</h3>' +
+      '<div style="font-size:13.5px;color:var(--dim)">' + esc(d.coalition.join(' + ')) + ' spliced their copies together (' + esc(d.strategy) + ').</div>' +
+      '<dl class="kv" style="margin-top:10px">' +
+      '<dt>slots they could choose</dt><dd>' + d.slots_free + '</dd>' +
+      '<dt>slots they were stuck with</dt><dd>' + d.slots_forced + ' — they all hold the same variant key there, so neither the other rendering nor a third one is obtainable</dd>' +
+      '</dl></div>';
+    html += '<table><tr><th>recipient</th><th class="mono">z</th><th class="mono">bound</th><th></th></tr>';
+    for (const s of d.ranked) {
+      const member = d.coalition.includes(s.recipient_id);
+      html += '<tr><td>' + esc(s.recipient_id) + '</td><td class="mono">' + num(s.z_score, 2) +
+        '</td><td class="mono">' + (s.p_bound_exact ? fmtP(s.p_bound, s.log10_p_bound) : '—') + '</td>' +
+        '<td>' + (member ? '<span class="pill" style="background:#10261a;color:#3fb950">colluder</span>' : '') + '</td></tr>';
+    }
+    html += '</table><div class="note">Tardos codes are built for exactly this: the coalition can only act where its members disagree, and every such choice still leaves a trace of whoever supplied the bit.</div>';
+    $('oTrace').innerHTML = html;
+  } catch (e) { fail('oTrace', e); }
+  busy($('bCollude'), false);
+};
+
+// ---- 5. audit ----
+async function audit(action, seq) {
+  const btn = action === 'tamper' ? $('bTamper') : (action === 'restore' ? $('bRestore') : $('bAudit'));
+  busy(btn, true);
+  try {
+    const d = await api('/api/audit', { action, seq: seq || 0 });
+    const chain = d.chain;
+    let html = '';
+    if (d.changed && action === 'tamper' && d.changed.before) {
+      html += '<div class="warnbox">Entry ' + d.changed.seq + '’s <code>' + esc(d.changed.field) +
+        '</code> was rewritten in the stored ledger — exactly what a dishonest administrator would do.<br>' +
+        '<span style="font-family:var(--mono);font-size:11.5px">was ' + esc(String(d.changed.before).slice(0, 32)) +
+        '…<br>now ' + esc(String(d.changed.after).slice(0, 32)) + '…</span></div>';
+    }
+    if (d.changed && action === 'restore') {
+      html += '<div class="note">' + (d.changed.restored ? 'Restored the pre-tamper ledger.' : 'Nothing to restore.') + '</div>';
+    }
+    html += '<ul class="checks">' +
+      '<li class="' + (chain.ok ? 'ok' : 'no') + '">' + (chain.ok ? '✓' : '✗') + ' hash chain over ' + d.entries + ' entries ' +
+      (chain.ok ? 'intact' : '<strong>BROKEN at seq ' + chain.first_bad_seq + '</strong>') + '</li>';
+    for (const p of (chain.problems || []).slice(0, 4)) html += '<li class="no">&nbsp;&nbsp;&nbsp;' + esc(p) + '</li>';
+    for (const cp of d.checkpoints) {
+      html += '<li class="' + (cp.valid ? 'ok' : 'no') + '">' + (cp.valid ? '✓' : '✗') + ' checkpoint #' + cp.index +
+        ' over seq ' + cp.range[0] + '–' + cp.range[1] + ', signed by ' + cp.witnesses + '/' + d.witness_threshold + ' witnesses</li>';
+      html += '<li class="' + (cp.root_matches_entries ? 'ok' : 'no') + '">' + (cp.root_matches_entries ? '✓' : '✗') +
+        '&nbsp;&nbsp;&nbsp;the ledger still reproduces that witnessed root' +
+        (cp.root_matches_entries ? '' : ' — <strong>it no longer does</strong>') + '</li>';
+    }
+    html += '</ul>';
+    if (d.checkpoints.length) {
+      html += '<dl class="kv" style="margin-top:12px"><dt>anchor</dt><dd>' + esc(d.checkpoints[d.checkpoints.length - 1].anchor) + '</dd></dl>' +
+        '<div class="note">That string is what the QR anchor encodes. Print it and the paper becomes a witness: a ledger rewritten later cannot match a root published before it was rewritten. No chain, no orderer, no network.</div>';
+    }
+    $('oAudit').innerHTML = html;
+  } catch (e) { fail('oAudit', e); }
+  busy(btn, false);
+}
+$('bAudit').onclick = () => audit('verify');
+$('bTamper').onclick = () => audit('tamper', 0);
+$('bRestore').onclick = () => audit('restore');
+</script>
+</body>
+</html>

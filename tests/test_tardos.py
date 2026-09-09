@@ -248,6 +248,51 @@ def test_the_bound_is_monotone_in_the_score() -> None:
     assert bounds == sorted(bounds, reverse=True)
 
 
+def test_a_leakers_own_copy_scores_exactly_the_maximum_and_the_bound_stays_finite() -> None:
+    """The common case, and it sits on the awkward edge of the bound.
+
+    When the extracted bits are exactly recipient j's codeword, every slot contributes
+    its most favourable value, so the score equals the largest the code can produce.
+    The probability of an innocent recipient matching that is the product of the
+    per-slot probabilities -- small, but emphatically not zero. Treating it as zero
+    would claim a false-accusation probability of exactly 0, and would also serialise
+    as Infinity and take the front end down with it.
+    """
+    m, n = 200, 40
+    code = tardos.generate(_params(m=m, n=n), np.random.default_rng(91))
+    y = code.X[6]
+    raw = float(tardos.scores(code, y)[6])
+    tail = tardos.TailBound(code, tardos.as_y(y, m))
+
+    log10 = tail.log10_bound(raw)
+    assert math.isfinite(log10)
+    assert log10 < 0.0
+
+    # it agrees with the product computed independently here
+    p = code.p
+    sign = np.where(y == 1, 1.0, -1.0)
+    hi, lo = sign * np.sqrt((1 - p) / p), -sign * np.sqrt(p / (1 - p))
+    take_hi = hi >= lo
+    expected = float(
+        (np.where(take_hi, np.log(p), np.log1p(-p))).sum() + math.log(n)
+    ) / math.log(10.0)
+    assert log10 == pytest.approx(expected, abs=1e-6)
+
+    # and a score beyond what the code can produce is still a finite, valid bound
+    assert math.isfinite(tail.log10_bound(raw * 2))
+
+
+def test_every_reported_number_survives_json() -> None:
+    """A NaN or an Infinity in an accusation is not JSON, and a front end that
+    receives one renders nothing at all."""
+    import json
+
+    code = tardos.generate(_params(m=150, n=30), np.random.default_rng(92))
+    for a in tardos.rank(code, code.X[4]):
+        payload = json.dumps(a.to_json(), allow_nan=False)
+        assert "Infinity" not in payload and "NaN" not in payload
+
+
 def test_a_single_lambda_is_already_a_valid_bound() -> None:
     """The cheap path used while ranking. Looser than the minimised one, never wrong."""
     code = tardos.generate(_params(m=400, n=50), np.random.default_rng(82))
