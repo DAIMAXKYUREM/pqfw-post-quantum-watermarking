@@ -44,7 +44,7 @@ mechanism is missing, rather than failing the first request.
 
 | host | free tier | how |
 |---|---|---|
-| **Render** | yes, sleeps after 15 min idle | `deploy/render.yaml` is a blueprint: push this repo to GitHub, then Render → New → Blueprint |
+| **Render** | yes, sleeps after 15 min idle | `render.yaml` at the repo root is a blueprint: push this repo to GitHub, then Render → New → Blueprint |
 | **Koyeb** | one service | point it at the repo, Dockerfile path `deploy/Dockerfile` |
 | **HF Spaces** | needs PRO for Docker | `python deploy/build_space.py`, then upload `deploy/.space` with `sdk: docker` |
 

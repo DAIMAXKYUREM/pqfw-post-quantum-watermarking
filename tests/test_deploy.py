@@ -45,8 +45,15 @@ def test_every_dockerfile_copy_exists_at_the_repo_root() -> None:
     assert not missing, f"Dockerfile copies paths that do not exist at the repo root: {missing}"
 
 
+def test_the_blueprint_sits_where_render_looks_for_it() -> None:
+    """Render defaults to render.yaml at the repository root. Anywhere else and the
+    Blueprint page reports "not found" and the operator has to know to type a path."""
+    assert (ROOT / "render.yaml").exists()
+    assert not (DEPLOY / "render.yaml").exists(), "two blueprints will drift apart"
+
+
 def test_the_render_blueprint_matches_the_dockerfile() -> None:
-    blueprint = yaml.safe_load((DEPLOY / "render.yaml").read_text(encoding="utf-8"))
+    blueprint = yaml.safe_load((ROOT / "render.yaml").read_text(encoding="utf-8"))
     service = blueprint["services"][0]
 
     assert service["runtime"] == "docker"
@@ -59,7 +66,7 @@ def test_the_render_blueprint_matches_the_dockerfile() -> None:
 
 def test_the_health_check_path_is_a_real_route() -> None:
     """Render marks a service unhealthy and restarts it if this 404s."""
-    blueprint = yaml.safe_load((DEPLOY / "render.yaml").read_text(encoding="utf-8"))
+    blueprint = yaml.safe_load((ROOT / "render.yaml").read_text(encoding="utf-8"))
     path = blueprint["services"][0]["healthCheckPath"]
     app_source = (ROOT / "web" / "app.py").read_text(encoding="utf-8")
     assert f'@app.get("{path}")' in app_source
