@@ -447,6 +447,7 @@ def slide3(slide):
         ("Fingerprint", "symmetric Tardos code (Škorić)"),
         ("Ledger", "hash chain + Merkle blocks, 2-of-3"),
         ("Carriers", "zero-width space  ·  PDF kerning"),
+        ("Addressing", "content-anchored, SHA3-256"),
     ]):
         rich(tf, [(key + "   ", True, NAVY), (value, False, INK)], size=8.6,
              space_after=3.6, first=(i == 0))
