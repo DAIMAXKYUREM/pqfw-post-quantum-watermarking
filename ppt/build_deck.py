@@ -28,8 +28,12 @@ TEMPLATE = ROOT / "template.pptx"
 OUT = ROOT / "NOX_SIH2026_PQFW.pptx"
 
 # --- identity ---------------------------------------------------------------
-PS_ID = "SIH26XXX"          # <-- fill from the SIH portal before uploading
-TEAM_ID = "TEAM-ID"         # <-- fill from the SIH portal before uploading
+PS_ID = "SIH26237"
+PS_TITLE = ("Cryptographic Attribution and Immutable Decryption Provenance for "
+            "Multi-Recipient Encrypted Document Distribution")
+ORG = "Ministry of Defence"
+THEME = "Blockchain & Cybersecurity"
+TEAM_ID = "—  (to be assigned on the portal)"   # <-- fill once the portal issues it
 TEAM_NAME = "NOX"
 INSTITUTE = "International Institute of Information Technology, Bhubaneswar"
 MEMBERS = [
@@ -63,6 +67,44 @@ BOTTOM = 6.86
 LEFT = 0.42
 RIGHT = 12.91
 
+
+
+NOTES = {
+    1: ("Problem statement SIH26237, Ministry of Defence. One document goes to many "
+        "cleared recipients; it leaks; today every one of them is an equally plausible "
+        "suspect. We built PQFW, and it is running right now at the address on this "
+        "slide — scan the code and follow along."),
+    2: ("The core idea in one sentence: the fingerprint is a consequence of which "
+        "decryption keys you hold, not of software choosing to add a watermark. Each "
+        "mark slot is written two ways that look identical and encrypted under "
+        "different keys; you get one key per slot. The other rendering is an AES-GCM "
+        "tag failure for you. There is no unmarked copy anywhere — not even on our own "
+        "disk. Bottom left is a real verdict from the running system."),
+    3: ("Three stages, all offline. Distribute: one ciphertext for everybody, plus a "
+        "14 KB key bundle each. Decrypt: the recipient spends one credential, gets a "
+        "uniquely marked copy, and signs an ML-DSA-65 receipt with their own key — that "
+        "is the non-repudiation. Record: three validators independently verify that "
+        "receipt and commit it 2-of-3. Trace: extract the marks, score them, and check "
+        "the ledger. No cloud KMS, no public chain, no network call at any point."),
+    4: ("We are honest about what breaks it. Retyping, OCR and stripping invisible "
+        "characters defeat the text carrier, and inserting a word desynchronises the "
+        "slots — all four are measured and published rather than hidden. The point is "
+        "the failure mode: when an attack wins the system fails to identify anybody. "
+        "Misidentification stayed at zero across the whole erasure sweep. The bottom row "
+        "is the actual next four steps, not an aspiration."),
+    5: ("Ministry of Defence context: service HQ, procurement, DRDO and partners, "
+        "inter-agency sharing. The real product is deterrence — when every holder knows "
+        "their copy is individually accountable, most leaks never happen. And it "
+        "protects the accused as much as it exposes the leaker: a stated error "
+        "probability and a refusal to guess are what stop an innocent officer being "
+        "named. Costs nothing to run."),
+    6: ("Every requirement in the problem statement, and every one is exercised by an "
+        "automated test and by a step of the live demo — 163 tests. Two things we do "
+        "not claim: this proves traceability, not unframeability, because the "
+        "distributor knows the codewords; post-quantum asymmetric fingerprinting has no "
+        "drop-in construction yet and we say so rather than pretending. Scan the code "
+        "and try to break it."),
+}
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -249,12 +291,12 @@ def slide1(slide):
         para(tf, "Post-Quantum Forensic Watermarking", size=14.5, color=ORANGE,
              space_after=0, align=PP_ALIGN.LEFT, bold=True)
 
-    tf = textbox(slide, 0.42, 2.42, 6.6, 3.3)
+    tf = textbox(slide, 0.42, 2.36, 6.6, 3.3)
     rows = [
         ("Problem Statement ID", PS_ID),
-        ("Problem Statement Title", "Forensic attribution of leaked documents in "
-                                    "broadcast-encrypt, individually-decrypt distribution"),
-        ("Theme", "Blockchain & Cybersecurity"),
+        ("Problem Statement Title", PS_TITLE),
+        ("Organisation", ORG),
+        ("Theme", THEME),
         ("PS Category", "Software"),
         ("Team ID", TEAM_ID),
         ("Team Name", f"{TEAM_NAME}  ·  {INSTITUTE}"),
@@ -264,15 +306,19 @@ def slide1(slide):
                  size=10.5, space_after=6, first=(i == 0))
         del p
 
-    # the differentiator: it is already running
-    card(slide, 0.42, 5.72, 6.6, 1.02, fill=GOODBG, edge=GOOD_EDGE, radius=0.09)
-    tf = textbox(slide, 0.58, 5.85, 6.3, 0.8)
+    # The differentiator is that it already runs, so make it scannable from the room.
+    card(slide, 0.42, 5.52, 6.6, 1.22, fill=GOODBG, edge=GOOD_EDGE, radius=0.09)
+    qr = ROOT / "qr_live.png"
+    if qr.exists():
+        slide.shapes.add_picture(str(qr), Inches(0.58), Inches(5.66), Inches(0.94),
+                                 Inches(0.94))
+    tf = textbox(slide, 1.66, 5.68, 5.2, 0.92)
     rich(tf, [("LIVE WORKING PROTOTYPE   ", True, GREEN),
-              ("·  real ML-KEM-768 / ML-DSA-65, in the browser", False, MUTED)],
-         size=9, space_after=2, first=True)
-    para(tf, LIVE, size=12.5, bold=True, color=NAVY, space_after=1)
-    para(tf, "Evaluation, figures and attack results:  " + RESULTS, size=7.4, color=MUTED,
-         space_after=0)
+              ("·  scan it", False, MUTED)],
+         size=8.6, space_after=2, first=True)
+    para(tf, LIVE, size=13, bold=True, color=NAVY, space_after=2)
+    para(tf, "Real ML-KEM-768 / ML-DSA-65 computed server-side. Evaluation and attack "
+             "results: " + RESULTS, size=7.2, color=MUTED, space_after=0)
 
     # Keep the members clear of the brain graphic (x 7.5-11.0), so the left column.
     tf = textbox(slide, 0.42, 6.88, 6.6, 0.5)
@@ -359,21 +405,35 @@ def slide2(slide):
     para(tf, LIVE + "   ·   163 automated tests", size=9.6, bold=True, color=NAVY,
          space_after=0)
 
-    # -- a worked example, in the space the bullets leave free --------------------
-    ey = TOP + 4.02
-    section(slide, LEFT, ey, 7.9, "What that looks like on one document")
-    card(slide, LEFT, ey + 0.32, 7.9, 1.08, fill=WARM, edge=WARM_EDGE, radius=0.05)
-    tf = textbox(slide, LEFT + 0.16, ey + 0.43, 7.58, 0.88)
-    rich(tf, [("A 2 KB memo, 20 recipients, 301 mark slots. ", True, NAVY),
-              ("r07 opens it once and signs an ML-DSA-65 receipt. Their copy leaks.",
-               False, INK)],
-         size=9.4, space_after=5, first=True)
-    rich(tf, [("Traced back to ", False, INK), ("r07, session #0", True, NAVY),
-              (" — with a provable false-accusation probability of ", False, INK),
-              ("2.8 x 10⁻⁵⁹", True, GREEN),
-              (", the next-best suspect 10 sigma behind, and all five ledger checks green.",
-               False, INK)],
-         size=9.4, space_after=0)
+    # -- the output itself, reproduced as the system prints it --------------------
+    # A verdict is the deliverable, so show one rather than describe it. Drawn natively
+    # instead of screenshotted: the demo's UI is dark, and a dark screenshot prints
+    # muddy and unreadable at slide size.
+    ey = TOP + 3.94
+    section(slide, LEFT, ey, 7.9, "What the system actually returns")
+    card(slide, LEFT, ey + 0.30, 7.9, 1.26, fill=GOODBG, edge=GOOD_EDGE, radius=0.06)
+
+    tf = textbox(slide, LEFT + 0.20, ey + 0.41, 4.5, 0.5)
+    rich(tf, [("IDENTIFIED", True, GREEN), ("   r07, session #0", True, NAVY)],
+         size=13, space_after=2, first=True)
+    para(tf, "false-accusation probability at most 2.8 × 10⁻⁵⁹", size=8.6, color=MUTED,
+         space_after=0)
+
+    tf = textbox(slide, LEFT + 0.20, ey + 0.99, 4.5, 0.30)
+    para(tf, "2 KB memo · 20 recipients · 301 mark slots · next suspect 10σ behind",
+         size=7.8, color=MUTED, space_after=0)
+
+    checks = [
+        "statistical significance (provable bound < α)",
+        "the accused's own ML-DSA-65 receipt verifies",
+        "ledger hash chain intact",
+        "block committed by 2 of 3 validators",
+        "Merkle inclusion proof to the signed root",
+    ]
+    tf = textbox(slide, LEFT + 4.92, ey + 0.40, 3.3, 1.12)
+    for i, check in enumerate(checks):
+        rich(tf, [("✓  ", True, GREEN), (check, False, INK)], size=7.8, space_after=2.2,
+             first=(i == 0))
 
 
 def slide3(slide):
@@ -609,14 +669,16 @@ def slide5(slide):
     card(slide, LEFT, TOP + 0.36, colw, 1.86, radius=0.06)
     tf = textbox(slide, LEFT + 0.16, TOP + 0.48, colw - 0.32, 1.7)
     for i, (head, body) in enumerate([
-        ("Ministries and secretariats.", "Cabinet notes, draft policy and pre-budget "
-                                         "material become individually accountable."),
-        ("Procurement and tendering.", "Bid documents leak before deadlines; each copy now "
-                                       "names its holder."),
-        ("Examination boards.", "Question papers reach centres traceably, so a leak has an "
-                                "owner within minutes."),
-        ("Courts and legal discovery.", "Material shared with opposing counsel carries "
-                                        "non-repudiable receipts."),
+        ("Service headquarters.", "Operational orders and classified assessments "
+                                  "distributed to a named list become individually "
+                                  "accountable, not collectively deniable."),
+        ("Defence procurement.", "Tender documents and technical specifications reach "
+                                 "vendors traceably; a pre-bid leak has an owner."),
+        ("DRDO and defence PSUs.", "Design data shared with partners and contractors "
+                                   "carries a non-repudiable receipt per recipient."),
+        ("Inter-agency sharing.", "Intelligence circulated across agencies keeps its "
+                                  "provenance without a central authority anyone must "
+                                  "trust."),
     ]):
         rich(tf, [(head + " ", True, NAVY), (body, False, MUTED)], size=9.2,
              space_after=6, first=(i == 0))
@@ -625,16 +687,17 @@ def slide5(slide):
     card(slide, x2, TOP + 0.36, colw, 1.86, fill=GOODBG, edge=GOOD_EDGE, radius=0.06)
     tf = textbox(slide, x2 + 0.16, TOP + 0.48, colw - 0.32, 1.7)
     for i, (head, body) in enumerate([
-        ("Deterrence is the real product.", "When 20 people know each copy is accountable, "
-                                            "most of them do not leak at all."),
+        ("Deterrence is the real product.", "When every holder knows their copy is "
+                                            "individually accountable, most leaks never "
+                                            "happen."),
         ("Protects the accused too.", "A stated error probability and a refusal to guess "
                                       "are what stop an innocent official being named."),
         ("Zero licensing cost.", "Open-source and free-tier; per-department rollout cost is "
                                  "effectively nil."),
-        ("Quantum-durable.", "A cabinet note is sensitive for decades; FIPS 203/204 resist "
-                             "harvest-now-decrypt-later."),
-        ("Scales unchanged.", "Any ministry distributing one document to a named list — "
-                              "the architecture does not change, only the list."),
+        ("Quantum-durable.", "A defence assessment stays sensitive for decades; FIPS 203/204 "
+                             "resist harvest-now-decrypt-later."),
+        ("Scales unchanged.", "Any organisation distributing one document to a named "
+                              "list — the architecture does not change, only the list."),
     ]):
         rich(tf, [(head + " ", True, GREEN), (body, False, MUTED)], size=9.2,
              space_after=6, first=(i == 0))
@@ -647,7 +710,7 @@ def slide5(slide):
     tf = textbox(slide, LEFT + 0.18, y + 0.13, colw - 0.36, 1.1)
     para(tf, "TODAY", size=8.4, bold=True, color=RED, space_after=4, first=True)
     bullets(tf, [
-        "Every recipient who could decrypt is an equally plausible suspect.",
+        "Every cleared recipient is an equally plausible suspect.",
         "Access logs can be edited by the administrator who holds them.",
         "One identical watermark for all recipients attributes nothing.",
     ], size=8.8, gap=3, color=MUTED)
@@ -728,26 +791,30 @@ def slide6(slide):
          size=8, color=MUTED, space_after=0)
 
     # -- what we verified -----------------------------------------------------
-    section(slide, LEFT, TOP + 2.94, RIGHT - LEFT, "Compliance with the problem statement")
-    card(slide, LEFT, TOP + 3.30, RIGHT - LEFT, 1.62, radius=0.05)
+    section(slide, LEFT, TOP + 2.90, RIGHT - LEFT,
+            "Every requirement in " + PS_ID + ", and where it is met",
+            "each one is exercised by an automated test, and by a step of the live demo")
+    card(slide, LEFT, TOP + 3.32, RIGHT - LEFT, 1.62, radius=0.05)
 
     reqs = [
-        ("Invisible watermark generated at decryption", True),
-        ("Unique per recipient and per decryption session", True),
-        ("Visually identical, forensically distinct", True),
-        ("Decryption bound to identity, signed with the recipient's own key", True),
-        ("NIST post-quantum algorithms for key exchange and signature", True),
-        ("Immutable audit layer on a distributed ledger", True),
-        ("No single admin or compromised account can alter records", True),
-        ("Extract watermark, look up the ledger, return a verifiable record", True),
-        ("Operates fully offline and air-gapped", True),
-        ("No cloud KMS and no public blockchain", True),
+        ("Unique invisible forensic watermark at the moment of decryption", True),
+        ("Specific to each recipient and each decryption session", True),
+        ("Every copy visually identical, forensically distinct", True),
+        ("Each decryption cryptographically bound to the recipient's identity", True),
+        ("Signature generated with the recipient's own private key", True),
+        ("NIST-standardised PQC for key exchange and digital signatures", True),
+        ("Immutable audit layer implemented as a distributed ledger", True),
+        ("No single administrator or compromised account can alter records", True),
+        ("Extract the watermark, match it against the ledger, verify it", True),
+        ("Complete operation offline and air-gapped", True),
+        ("No dependency on external cloud KMS services", True),
+        ("No dependency on public blockchain networks", True),
     ]
     cw = (RIGHT - LEFT - 0.4) / 2
     for i, (text, ok) in enumerate(reqs):
-        col, row = divmod(i, 5)
-        tf = textbox(slide, LEFT + 0.2 + col * cw, TOP + 3.44 + row * 0.28, cw - 0.1, 0.26)
-        rich(tf, [("✓  ", True, GREEN), (text, False, INK)], size=8.6, space_after=0,
+        col, row = divmod(i, 6)
+        tf = textbox(slide, LEFT + 0.2 + col * cw, TOP + 3.42 + row * 0.245, cw - 0.1, 0.24)
+        rich(tf, [("✓  ", True, GREEN), (text, False, INK)], size=8.3, space_after=0,
              first=True)
 
 
@@ -769,6 +836,9 @@ def main() -> None:
         if index > 0:
             set_team_oval(slide)
         build(slide)
+        note = NOTES.get(index + 1)
+        if note:
+            slide.notes_slide.notes_text_frame.text = note
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     prs.save(OUT)
