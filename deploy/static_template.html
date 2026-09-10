@@ -365,13 +365,24 @@ recipient j's bundle:   VK[i][ X[j][i] ]   ← one of the two, never both</pre>
             level.
           </p>
         </div>
-        <div class="callout stop">
-          <h4>Ordinal locators do not resynchronise</h4>
+        <div class="callout">
+          <h4>Content-anchored locators resynchronise</h4>
           <p>
-            A slot's address is "the k-th space in the document", so inserting or deleting a
-            word shifts every later address. This is the sharpest limitation of the design
-            and the first thing anyone asks about. A content-anchored locator would fix it,
-            and is the natural next iteration.
+            A slot used to be addressed as "the k-th space in the document", so inserting or
+            deleting one word shifted every later address — 51% bit error from an attack that
+            never touched a mark. A slot is now addressed by a digest of the text running up
+            to it, which an edit elsewhere does not move. Those attacks now read at 0% bit
+            error; the five to seven slots whose own anchor window contained the edit are
+            carried as erasures.
+          </p>
+        </div>
+        <div class="callout stop">
+          <h4>What is left cannot be fixed by addressing</h4>
+          <p>
+            Stripping format characters and retyping delete the marks themselves rather than
+            move them, and no locator recovers a mark that is gone. Surviving those needs the
+            mark to live in the words rather than between them, at roughly a thirtieth of the
+            capacity.
           </p>
         </div>
       </div>

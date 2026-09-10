@@ -71,9 +71,12 @@ NOTES = {
         "non-repudiation. Record: three validators independently verify that receipt and "
         "commit it 2-of-3. Trace: extract the marks, score them, check the ledger. No "
         "cloud KMS, no public chain, no network call at any point."),
-    4: ("We are honest about what breaks it. Retyping, OCR and stripping invisible "
-        "characters defeat the text carrier, and inserting a word desynchronises the "
-        "slots — all four are measured and published rather than hidden. The point is the "
+    4: ("We are honest about what breaks it. Two attacks still win — stripping "
+        "invisible characters, and retyping — and both are measured and published "
+        "rather than hidden. It was four until we anchored slot addresses to the text "
+        "before them instead of to a position; prepending or deleting one word went "
+        "from 51% bit error to zero. What is left cannot be fixed by addressing: those "
+        "two delete the marks rather than move them. The point is the "
         "failure mode: when an attack wins the system fails to identify anybody. "
         "Both curves are drawn straight from the evaluation CSVs. The left one is the "
         "whole argument in one picture: as you destroy the marks the green line falls, "
@@ -85,7 +88,7 @@ NOTES = {
         "the accused as much as it exposes the leaker: a stated error probability and a "
         "refusal to guess are what stop an innocent officer being named."),
     6: ("Every requirement in the problem statement, and every one is exercised by an "
-        "automated test and by a step of the live demo — 163 tests. Two things we do not "
+        "automated test and by a step of the live demo — 170 tests. Two things we do not "
         "claim: this proves traceability, not unframeability, because the distributor "
         "knows the codewords; and post-quantum asymmetric fingerprinting has no drop-in "
         "construction yet, so we say so rather than pretending. Scan the code and try to "
@@ -340,7 +343,7 @@ def slide2(slide):
     tf = textbox(slide, rx + 0.20, cy + 0.22, rw - 0.4, 0.66)
     para(tf, "NOT A CONCEPT — IT IS RUNNING", size=7.4, bold=True, color=ORANGE,
          space_after=3, first=True, spacing=1.2)
-    rich(tf, [(LIVE, True, WHITE), ("     163 automated tests", False, ON_DARK_DIM)],
+    rich(tf, [(LIVE, True, WHITE), ("     170 automated tests", False, ON_DARK_DIM)],
          size=10.5, space_after=0)
 
 
@@ -453,10 +456,10 @@ def slide3(slide):
     tf = textbox(slide, rx, TOP + 4.30, rw, 1.5)
     bullets(tf, [
         "Safety and audit layers built and tested before any tracing existed.",
-        "Test-first: 163 tests, including the central claim that a recipient cannot "
+        "Test-first: 170 tests, including the central claim that a recipient cannot "
         "decrypt the other variant.",
-        "Every attack on the carrier measured and published — including the four that "
-        "defeat it.",
+        "Every attack on the carrier measured and published — including the two that "
+        "still defeat it.",
         "Shipped, not staged: one container on a free tier, no GPU and no HSM.",
     ], size=8.4, gap=4)
 
@@ -482,8 +485,9 @@ def slide4(slide):
         ("2", "Potential challenges and risks", WARM, WARM_EDGE, AMBER, [
             ("Carrier fragility.", "Retyping, OCR or stripping invisible characters "
                                    "destroys a text watermark."),
-            ("Word insertion desynchronises.", "Slot addresses are ordinal, so adding a "
-                                               "word shifts every later slot."),
+            ("Repeated boilerplate.", "A slot anchored to identical text is ambiguous; "
+                                      "the tie-break is bounded, so it refuses rather "
+                                      "than guesses."),
             ("Short documents, weaker codes.", "A memo holds ~300 slots; the Tardos "
                                                "bound asks for far more."),
             ("Unframeability.", "The sender knows every codeword, so this proves "
@@ -499,8 +503,8 @@ def slide4(slide):
                                             "the document supports, before sending."),
             ("Tardos codes for collusion.", "Where colluders agree they are stuck — no "
                                             "one holds the other key."),
-            ("Content-anchored slots.", "The named next step, replacing ordinal "
-                                        "addressing."),
+            ("Content-anchored slots.", "Shipped. Addressed by the text before the "
+                                        "slot, so an edit elsewhere cannot move it."),
         ]),
     ]
     for x, (num, title, fill, edge, accent, items) in zip(xs, columns):
@@ -535,8 +539,8 @@ def slide4(slide):
           size=7.8)
     figures = [
         ("2.8 × 10⁻⁵⁹", "provable false-accusation bound on the live demo", WHITE),
-        ("4", "attacks that defeat the carrier — every one published", ORANGE),
-        ("163", "automated tests, all passing", GREEN_BRIGHT),
+        ("2 of 13", "attacks still defeat the carrier — was 4, both published", ORANGE),
+        ("170", "automated tests, all passing", GREEN_BRIGHT),
     ]
     fy = TOP + 2.76
     for value, caption, color in figures:
@@ -547,8 +551,9 @@ def slide4(slide):
 
     heading(slide, LEFT, TOP + 4.42, RIGHT - LEFT, "4", "Path to deployment")
     steps = [
-        ("NOW", "Working prototype", "text and PDF carriers, 3-validator ledger, live"),
-        ("NEXT", "Content-anchored slots", "removes the word-insertion weakness"),
+        ("NOW", "Working prototype", "content-anchored carriers, 3-validator ledger, "
+                                      "live"),
+        ("NEXT", "Lexical carrier", "marks in word choice, to survive OCR and retyping"),
         ("THEN", "Departmental pilot", "validators held by three separate offices"),
         ("SCALE", "Cross-organisation", "one validator per participating body"),
     ]

@@ -162,9 +162,9 @@ Measured, with the wins and the losses both reported
 | collapse runs of spaces and tabs | 0% | traced — U+200B is a *format* character, not whitespace, so `\s+` does not touch it |
 | **strip all Unicode format characters** | **51%** | **defeats it** |
 | **retype the document** | **51%** | **defeats it** |
-| **prepend one word** | **51%** | **defeats it** — desynchronisation |
-| insert one word halfway | 25% | traced (the head still lines up) |
-| **delete the first word** | **51%** | **defeats it** — desynchronisation |
+| prepend one word | 0% | traced, z=19.0 — 723/728 slots readable |
+| insert one word halfway | 0% | traced — 723/728 |
+| delete the first word | 0% | traced, z=19.0 — 721/728 |
 
 Two things worth being explicit about:
 
@@ -173,11 +173,22 @@ slots, and a removed slot is carried as an erasure rather than guessed as a zero
 the evidence weakens and never inverts. Across a 0–95% erasure sweep, misidentification
 stays at **0.0%** at every level ([fig3](eval/results/fig3_erasure.png)).
 
-**Ordinal locators do not resynchronise.** A slot's address is "the k-th space in the
-document", so inserting or deleting a word shifts every later address and the extractor
-reads neighbouring slots. This is the sharpest limitation of the design and the first
-thing anyone asks about. A content-anchored locator — landmarks derived from a rolling
-hash of surrounding words — would fix it and is the natural next iteration.
+**Content-anchored locators resynchronise.** A slot used to be addressed as "the k-th
+space in the document", so inserting or deleting one word shifted every later address
+and the extractor read neighbouring slots — 51% bit error, from an attack that never
+touched a mark. A slot is now addressed by a digest of the normalised text that runs up
+to it, which an edit somewhere else does not move. The three desynchronisation attacks
+above went from 51% / 25% / 51% bit error to **0%**, at a cost of five to seven slots out
+of 728: the ones whose own anchor window contained the edit, which are carried as
+erasures. Where a document repeats itself the anchor is ambiguous, and a candidate too
+far from where the slot used to be is refused rather than guessed.
+
+**What is left cannot be fixed by addressing.** Both remaining attacks delete the marks
+themselves rather than move them, and no locator recovers a mark that is gone. Surviving
+retyping or OCR needs the mark to live in the words rather than between them — a lexical
+carrier, choosing between meaning-identical renderings. That costs roughly thirty times
+the capacity, so it suits long documents (tenders, specifications, design data) and not
+short memos.
 
 When an attack wins, the result is a **failure to identify**, never a misidentification.
 

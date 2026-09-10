@@ -387,10 +387,11 @@ ATTACKS = [
     Attack("whitespace_collapse", _normalise_whitespace, "collapse runs of spaces/tabs"),
     Attack("strip_format_chars", _strip_invisibles, "remove every Unicode format character"),
     Attack("retype", _retype, "read it and type it out again"),
-    # Desynchronisation. A slot's locator is "the k-th space in the document", so
-    # inserting or removing a word shifts every ordinal after it and the extractor reads
-    # neighbouring slots instead of the intended ones. Worth reporting loudly: it is the
-    # sharpest limitation of an ordinal locator, and the first thing anyone asks about.
+    # Desynchronisation. These three used to be the sharpest limitation of the carrier:
+    # a locator saying "the k-th space in the document" is shifted by one inserted or
+    # deleted word, and the extractor then reads the neighbouring slots. Content-anchored
+    # locators fixed that, and these cases stay in the harness precisely so the fix keeps
+    # being proved rather than assumed.
     Attack("insert_word_start", _insert_word_at_start, "prepend one word (shifts every slot)"),
     Attack("insert_word_midway", _insert_word_midway, "insert one word halfway through"),
     Attack("delete_word_start", _delete_a_word, "delete the first word"),
@@ -717,8 +718,8 @@ def fig_attacks(rows: list[dict[str, Any]]) -> None:
            title="Attacks on the zero-width-space carrier")
     ax.invert_yaxis()
     fig.suptitle(
-        "Truncation only removes slots, so tracing survives it. Anything that rewrites "
-        "the whitespace -- or shifts it -- does not.",
+        "Truncation only removes slots and shifting only moves them, so tracing survives "
+        "both. Deleting the marks themselves is what wins.",
         fontsize=8, y=0.018,
     )
     fig.tight_layout(rect=(0, 0.075, 1, 1))
