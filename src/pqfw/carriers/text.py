@@ -98,6 +98,10 @@ ANCHOR_HEX = 12
 # enough to collide.
 AMBIGUOUS_DRIFT = 48
 
+# Named so a running deployment can report which addressing scheme it is built with;
+# see /api/health. A marker that is derived rather than typed out cannot go stale.
+ADDRESSING = "content-anchored"
+
 _NOISE = re.compile(rb"[^a-z0-9]+")
 
 
@@ -202,7 +206,7 @@ class TextZwspCarrier:
                 "normalised_bytes": len(normalised),
                 "stripped_existing_zwsp": len(source) != len(normalised),
                 "usable_boundaries": available,
-                "addressing": "content-anchored",
+                "addressing": ADDRESSING,
             },
         )
 

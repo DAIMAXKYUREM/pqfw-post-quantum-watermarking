@@ -30,6 +30,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pqfw import package as pkg
 from pqfw import pqc, tardos, workflow
 from pqfw.carrier import available as available_carriers
+from pqfw.carriers.text import ADDRESSING as TEXT_ADDRESSING
 from pqfw.store import Store
 
 # Public demo limits. Generous enough to show the real behaviour, small enough that a
@@ -424,7 +425,20 @@ def api_audit(
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
-    return {"ok": True, "sessions": len(_SESSIONS), "algorithms": pqc.alg_report()}
+    # Which build is actually serving. Without this the only way to tell whether a
+    # push reached the host was to guess from behaviour, which is how a stale container
+    # goes unnoticed for a week. RENDER_GIT_COMMIT is set by the host at runtime; the
+    # addressing marker comes from the carrier itself, so it cannot drift from the code.
+    return {
+        "ok": True,
+        "sessions": len(_SESSIONS),
+        "algorithms": pqc.alg_report(),
+        "build": {
+            "commit": os.environ.get("RENDER_GIT_COMMIT", "local")[:12],
+            "branch": os.environ.get("RENDER_GIT_BRANCH", "") or "local",
+            "text_addressing": TEXT_ADDRESSING,
+        },
+    }
 
 
 if __name__ == "__main__":

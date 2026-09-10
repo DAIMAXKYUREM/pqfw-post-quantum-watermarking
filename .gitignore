@@ -17,3 +17,6 @@ demo/leaked.*
 ppt/render/
 ppt/tmpl-render/
 ppt/*.pdf
+
+# PowerPoint/Word lock files, created while a deck is open
+~$*

@@ -254,3 +254,14 @@ def test_health_reports_the_real_primitives(client) -> None:
     health = client.get("/api/health").json()
     assert health["ok"] is True
     assert health["algorithms"]["kem"] == "ML-KEM-768"
+
+
+def test_health_reports_which_build_is_serving(client) -> None:
+    """A deploy has to be verifiable from outside.
+
+    Without this the only way to tell whether a push actually reached the host was to
+    guess from behaviour, which is how a stale container goes unnoticed.
+    """
+    build = client.get("/api/health").json()["build"]
+    assert build["commit"]
+    assert build["text_addressing"] == "content-anchored"
