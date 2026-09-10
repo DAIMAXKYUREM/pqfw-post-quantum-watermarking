@@ -21,6 +21,8 @@ never from an accent bar down the edge of a card, which is the other tell.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_CONNECTOR, MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
@@ -57,6 +59,7 @@ ROSE = RGBColor(0xFD, 0xEE, 0xEE)
 ROSE_EDGE = RGBColor(0xE3, 0xAF, 0xAF)
 
 BODY = "Calibri"
+ICON_DIR = Path(__file__).resolve().parent / "icons"
 
 # content band between the title and the blue footer bar
 TOP = 1.28
@@ -192,9 +195,41 @@ def hexbadge(slide, x, y, size, label, fill=ORANGE, text_color=WHITE, fsize=10):
     return shape
 
 
-def heading(slide, x, y, w, number, title, kicker=None, on_dark=False):
+def icon(slide, name, x, y, size, on_dark=True):
+    """One pictogram. Two prerendered tints, because a PNG cannot be recoloured here."""
+    path = ICON_DIR / (f"{name}.png" if on_dark else f"{name}-navy.png")
+    if not path.exists():
+        return None
+    return slide.shapes.add_picture(str(path), Inches(x), Inches(y), Inches(size),
+                                    Inches(size))
+
+
+def hexicon(slide, x, y, size, name, fill=ORANGE):
+    """The badge motif carrying a mark instead of a digit.
+
+    Used where a number would collide with numbering that already means something
+    else on the same slide -- the architecture slide runs template prompts 1-2 down
+    one side and pipeline stages down the other.
+    """
+    shape = slide.shapes.add_shape(MSO_SHAPE.HEXAGON, Inches(x), Inches(y),
+                                   Inches(size), Inches(size * 0.88))
+    shape.rotation = 90
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = fill
+    shape.line.fill.background()
+    shape.shadow.inherit = False
+    # rotation pivots about the centre, so the glyph is placed from the centre out
+    glyph = size * 0.46
+    icon(slide, name, x + size / 2 - glyph / 2, y + size * 0.44 - glyph / 2, glyph)
+    return shape
+
+
+def heading(slide, x, y, w, number, title, kicker=None, on_dark=False, mark=None):
     """Section prompt with its badge. Every heading in the deck looks like this."""
-    hexbadge(slide, x, y - 0.01, 0.30, number)
+    if mark:
+        hexicon(slide, x, y - 0.01, 0.30, mark)
+    else:
+        hexbadge(slide, x, y - 0.01, 0.30, number)
     tf = textbox(slide, x + 0.42, y - 0.03, w - 0.42, 0.34)
     para(tf, title, size=11.5, bold=True, color=ON_DARK if on_dark else NAVY,
          space_after=0, first=True)
@@ -231,6 +266,32 @@ def node(slide, x, y, w, h, title, lines, kind="dark"):
     rect(slide, x, y, w, h, fill, edge=edge, radius=0.09, line_w=1.25)
     tf = textbox(slide, x + 0.08, y + 0.08, w - 0.16, h - 0.16, anchor=MSO_ANCHOR.MIDDLE)
     para(tf, title, size=8.8, bold=True, color=tcol, space_after=2, first=True,
+         align=PP_ALIGN.CENTER)
+    for line in lines:
+        para(tf, line, size=7.0, color=scol, space_after=0.5, align=PP_ALIGN.CENTER)
+
+
+def iconnode(slide, x, y, w, h, mark, title, lines, kind="dark"):
+    """A flow box with a pictogram above its caption.
+
+    Four identical rectangles in a row tell the eye nothing until it has read all
+    four. A document, a key, a sealed package and a fingerprint are legible before
+    the caption is, so the diagram can be scanned and then read rather than only
+    read. The mark is centred above the title so a two-word and a three-word caption
+    still line up across the row.
+    """
+    styles = {
+        "dark": (NAVY_NODE, NAVY_EDGE, ON_DARK, ON_DARK_DIM),
+        "accent": (ORANGE_DEEP, ORANGE, WHITE, RGBColor(0xFF, 0xE1, 0xC2)),
+        "good": (GREEN, GREEN_BRIGHT, WHITE, RGBColor(0xCC, 0xF0, 0xDF)),
+        "ghost": (NAVY_DEEP, NAVY_EDGE, ON_DARK_DIM, RGBColor(0x7A, 0x92, 0xBB)),
+    }
+    fill, edge, tcol, scol = styles[kind]
+    rect(slide, x, y, w, h, fill, edge=edge, radius=0.09, line_w=1.25)
+    glyph = 0.30
+    icon(slide, mark, x + w / 2 - glyph / 2, y + 0.15, glyph)
+    tf = textbox(slide, x + 0.07, y + 0.55, w - 0.14, h - 0.66)
+    para(tf, title, size=8.8, bold=True, color=tcol, space_after=2.5, first=True,
          align=PP_ALIGN.CENTER)
     for line in lines:
         para(tf, line, size=7.0, color=scol, space_after=0.5, align=PP_ALIGN.CENTER)

@@ -14,6 +14,7 @@ import re
 import urllib.request
 from pathlib import Path
 
+from PIL import Image
 from reportlab.graphics import renderPM
 from svglib.svglib import svg2rlg
 
@@ -23,18 +24,22 @@ CDN = "https://cdn.jsdelivr.net/npm/simple-icons@13/icons/{slug}.svg"
 # slug -> (filename, colour). Colour is applied to the path fill so the row reads as one
 # system; the marks stay recognisable by shape, which is how logos actually work at this
 # size.
-NAVY = "#1F3864"
+# The SVG is filled black and the tint is applied afterwards. Filling it navy
+# instead would leave a solid pixel at luminance 54, so inverting that into alpha
+# would cap every mark at 79% opacity and print the whole row washed out.
+BLACK = "#000000"
+NAVY_RGB = (0x1F, 0x38, 0x64)
 LOGOS = {
-    "python": ("python", NAVY),
-    "fastapi": ("fastapi", NAVY),
-    "numpy": ("numpy", NAVY),
-    "docker": ("docker", NAVY),
-    "linux": ("linux", NAVY),
-    "github": ("github", NAVY),
-    "render": ("render", NAVY),
-    "huggingface": ("huggingface", NAVY),
-    "gnubash": ("bash", NAVY),
-    "pytest": ("pytest", NAVY),
+    "python": ("python", BLACK),
+    "fastapi": ("fastapi", BLACK),
+    "numpy": ("numpy", BLACK),
+    "docker": ("docker", BLACK),
+    "linux": ("linux", BLACK),
+    "github": ("github", BLACK),
+    "render": ("render", BLACK),
+    "huggingface": ("huggingface", BLACK),
+    "gnubash": ("bash", BLACK),
+    "pytest": ("pytest", BLACK),
 }
 
 
@@ -49,6 +54,20 @@ def recolour(svg: str, colour: str) -> str:
     if "<path" in svg:
         svg = svg.replace("<path", f'<path fill="{colour}"', 1)
     return svg
+
+
+def flatten(source: Path, target: Path) -> None:
+    """Turn the white-matted render into transparent navy.
+
+    renderPM has no alpha channel, so an opaque white square shipped behind every
+    mark. That is invisible on white and a row of faint tiles on the pale card the
+    logos actually sit on. Inverting luminance into alpha drops the matte and keeps
+    the antialiasing a colour-key would have thrown away.
+    """
+    grey = Image.open(source).convert("L")
+    out = Image.new("RGBA", grey.size, NAVY_RGB + (0,))
+    out.putalpha(Image.eval(grey, lambda v: 255 - v))
+    out.save(target)
 
 
 def main() -> int:
@@ -70,7 +89,10 @@ def main() -> int:
         drawing.height *= scale
         drawing.scale(scale, scale)
         path = OUT / f"{name}.png"
-        renderPM.drawToFile(drawing, str(path), fmt="PNG", bg=0xFFFFFF)
+        scratch = OUT / "_matte.png"
+        renderPM.drawToFile(drawing, str(scratch), fmt="PNG", bg=0xFFFFFF)
+        flatten(scratch, path)
+        scratch.unlink(missing_ok=True)
         made.append(path)
         print(f"  {name}.png")
     print(f"\n{len(made)} logos -> {OUT}")

@@ -30,7 +30,8 @@ from design import (  # noqa: E402
     AMBER, BODY, CARD, CARD_EDGE, CYAN, FAINT, GREEN, GREEN_BRIGHT, INK, LEFT, MINT,
     MINT_EDGE, MUTED, NAVY, NAVY_DEEP, ON_DARK_DIM, ORANGE, RED, RIGHT, ROSE, ROSE_EDGE,
     TOP, WARM, WARM_EDGE, WHITE, bullets, flow_arrow, flow_arrow_down, heading, hexbadge,
-    bring_to_front, label, logo, node, panel, para, rect, rich, stat, textbox,
+    bring_to_front, icon, iconnode, label, logo, node, panel, para, rect, rich,
+    stat, textbox, hexicon,
 )
 
 TEMPLATE = ROOT / "template.pptx"
@@ -156,24 +157,35 @@ def logo_row(slide, x, y, size, gap, marks):
 def slide1(slide):
     drop(find(slide, "TextBox 9"))
 
-    # A dark field under the title band gives the opening slide a centre of gravity.
-    # It starts below the title so the template's own navy wordmark stays legible.
-    panel(slide, 0.0, 1.02, 7.62, 6.48, NAVY_DEEP, radius=0.0)
-    rect(slide, 0.0, 1.02, 7.62, 0.055, ORANGE, radius=0.0)
+    # A half-bleed dark field, stopped short of the template's own hexagon artwork.
+    # The earlier version ran to 7.62in and clipped the left lobe of it, which read as
+    # an accident rather than a crop, and carried an orange rule along its top edge --
+    # the accent stripe that makes a slide look assembled from a theme.
+    panel(slide, 0.0, 1.00, 7.12, 6.50, NAVY_DEEP, radius=0.0)
 
     subtitle = find(slide, "Subtitle 3")
     if subtitle is not None:
-        subtitle.left, subtitle.top = Inches(0.62), Inches(1.30)
-        subtitle.width, subtitle.height = Inches(6.6), Inches(1.16)
+        subtitle.left, subtitle.top = Inches(0.60), Inches(1.30)
+        subtitle.width, subtitle.height = Inches(6.2), Inches(1.10)
         tf = subtitle.text_frame
         tf.clear()
         tf.margin_left = tf.margin_right = Emu(0)
-        para(tf, "PQFW", size=46, bold=True, color=WHITE, space_after=0, first=True)
+        para(tf, "PQFW", size=44, bold=True, color=WHITE, space_after=0, first=True)
         para(tf, "Post-Quantum Forensic Watermarking", size=14.5, bold=True,
              color=ORANGE, space_after=0)
         bring_to_front(subtitle)
 
-    tf = textbox(slide, 0.62, 2.60, 6.6, 2.5)
+    # What the thing is, in one sentence. This also closes the inch of unexplained
+    # navy that used to sit between the metadata block and the QR card.
+    tf = textbox(slide, 0.60, 2.44, 6.10, 0.44)
+    rich(tf, [("One document goes to many cleared recipients. Each decrypted copy "
+               "carries an invisible, per-session fingerprint, so a leak resolves to ",
+               False, ON_DARK_DIM),
+              ("one name", True, WHITE),
+              (" — with a provable error bound.", False, ON_DARK_DIM)],
+         size=10.2, space_after=0, first=True)
+
+    tf = textbox(slide, 0.60, 3.02, 6.10, 1.86)
     rows = [
         ("Problem Statement ID", PS_ID),
         ("Problem Statement Title", PS_TITLE),
@@ -185,21 +197,21 @@ def slide1(slide):
     ]
     for i, (key, value) in enumerate(rows):
         rich(tf, [(key + "   ", False, ON_DARK_DIM), (value, True, WHITE)],
-             size=9.8, space_after=5, first=(i == 0))
+             size=9.6, space_after=4.5, first=(i == 0))
 
     # scannable from the back of the room
-    rect(slide, 0.62, 5.26, 6.6, 1.24, WHITE, edge=ORANGE, radius=0.06, line_w=1.5)
+    rect(slide, 0.60, 5.02, 6.10, 1.22, WHITE, edge=ORANGE, radius=0.06, line_w=1.5)
     qr = ROOT / "qr_live.png"
     if qr.exists():
-        logo(slide, qr, 0.78, 5.42, 0.92)
-    tf = textbox(slide, 1.86, 5.44, 5.22, 0.92)
+        logo(slide, qr, 0.75, 5.17, 0.92)
+    tf = textbox(slide, 1.82, 5.19, 4.72, 0.90)
     para(tf, "LIVE WORKING PROTOTYPE  ·  SCAN IT", size=8, bold=True, color=GREEN,
          space_after=2.5, first=True, spacing=1.2)
     para(tf, LIVE, size=14, bold=True, color=NAVY_DEEP, space_after=2.5)
     para(tf, "Real ML-KEM-768 / ML-DSA-65 computed server-side.  Evaluation and attack "
              "results: " + RESULTS, size=7, color=MUTED, space_after=0)
 
-    tf = textbox(slide, 0.62, 6.64, 6.6, 0.5)
+    tf = textbox(slide, 0.60, 6.52, 6.10, 0.5)
     para(tf, "TEAM MEMBERS", size=7, bold=True, color=ON_DARK_DIM, space_after=2.5,
          first=True, spacing=1.4)
     para(tf, "  ·  ".join(MEMBERS), size=8.2, color=WHITE, space_after=0)
@@ -212,37 +224,40 @@ def slide2(slide):
     heading(slide, LEFT, TOP, 7.9, "1",
             "Proposed Solution (Describe your Idea/Solution/Prototype)")
 
-    panel(slide, LEFT, TOP + 0.42, 7.9, 1.84)
-    label(slide, LEFT + 0.22, TOP + 0.54, 5.4,
+    # The sentence that explains the diagram used to sit outside the panel as a strip
+    # of unhoused prose. It belongs to the diagram, so it lives in the same dark field.
+    panel(slide, LEFT, TOP + 0.42, 7.9, 2.36)
+    label(slide, LEFT + 0.24, TOP + 0.52, 5.4,
           "Detailed explanation of the proposed solution", color=ON_DARK_DIM)
 
-    y = TOP + 0.82
-    bw, gap = 1.70, 0.32
-    xs = [LEFT + 0.22 + i * (bw + gap) for i in range(4)]
-    node(slide, xs[0], y, bw, 1.28, "Split the document",
-         ["base body", "+ m invisible", "mark slots"], "ghost")
-    flow_arrow(slide, xs[0] + bw + 0.03, y + 0.64, gap - 0.06, ORANGE)
-    node(slide, xs[1], y, bw, 1.28, "Two renderings, two keys",
-         ["identical to read,", "encrypted under", "different keys"], "accent")
-    flow_arrow(slide, xs[1] + bw + 0.03, y + 0.64, gap - 0.06)
-    node(slide, xs[2], y, bw, 1.28, "One ciphertext",
-         ["broadcast to all N,", "byte-identical", "for everybody"], "dark")
-    flow_arrow(slide, xs[2] + bw + 0.03, y + 0.64, gap - 0.06, GREEN_BRIGHT)
-    node(slide, xs[3], y, bw, 1.28, "One key each",
-         ["recipient holds", "1 of the 2 keys", "per slot"], "good")
+    y = TOP + 0.78
+    bw, gap = 1.63, 0.30
+    xs = [LEFT + 0.24 + i * (bw + gap) for i in range(4)]
+    iconnode(slide, xs[0], y, bw, 1.30, "document", "Split the document",
+             ["base body", "+ m invisible", "mark slots"], "ghost")
+    flow_arrow(slide, xs[0] + bw + 0.03, y + 0.65, gap - 0.06, ORANGE)
+    iconnode(slide, xs[1], y, bw, 1.30, "twocopies", "Two renderings, two keys",
+             ["identical to read,", "encrypted under", "different keys"], "accent")
+    flow_arrow(slide, xs[1] + bw + 0.03, y + 0.65, gap - 0.06)
+    iconnode(slide, xs[2], y, bw, 1.30, "ciphertext", "One ciphertext",
+             ["broadcast to all N,", "byte-identical", "for everybody"], "dark")
+    flow_arrow(slide, xs[2] + bw + 0.03, y + 0.65, gap - 0.06, GREEN_BRIGHT)
+    iconnode(slide, xs[3], y, bw, 1.30, "keys", "One key each",
+             ["recipient holds", "1 of the 2 keys", "per slot"], "good")
 
-    tf = textbox(slide, LEFT, TOP + 2.36, 7.9, 0.46)
+    tf = textbox(slide, LEFT + 0.24, TOP + 2.20, 7.42, 0.44)
     rich(tf, [("The fingerprint is not something their software chose to add — it is a "
-               "consequence of ", False, INK),
-              ("which keys they hold", True, NAVY),
-              (". The other rendering is an AES-GCM tag failure for them, and ", False, INK),
-              ("no unmarked copy exists anywhere", True, NAVY),
+               "consequence of ", False, ON_DARK_DIM),
+              ("which keys they hold", True, WHITE),
+              (". The other rendering is an AES-GCM tag failure for them, and ", False,
+               ON_DARK_DIM),
+              ("no unmarked copy exists anywhere", True, WHITE),
               (" — not in the package, not in transit, not on the sender's disk.",
-               False, INK)],
-         size=9.4, space_after=0, first=True)
+               False, ON_DARK_DIM)],
+         size=9.0, space_after=0, first=True)
 
-    heading(slide, LEFT, TOP + 2.90, 7.9, "2", "How it addresses the problem")
-    tf = textbox(slide, LEFT + 0.02, TOP + 3.30, 7.88, 1.0)
+    heading(slide, LEFT, TOP + 2.94, 7.9, "2", "How it addresses the problem")
+    tf = textbox(slide, LEFT + 0.02, TOP + 3.36, 7.88, 1.0)
     bullets(tf, [
         "Today every cleared recipient is an equally plausible suspect — the decrypted "
         "bytes are identical for all of them.",
@@ -252,11 +267,12 @@ def slide2(slide):
         "for everyone. Both are replaced, not patched.",
     ], size=9.3, gap=4.5)
 
-    ey = TOP + 4.10
+    ey = TOP + 4.18
     heading(slide, LEFT, ey, 7.9, "3", "What the system actually returns")
-    rect(slide, LEFT, ey + 0.40, 7.9, 1.00, NAVY_DEEP, edge=GREEN_BRIGHT, radius=0.06,
+    rect(slide, LEFT, ey + 0.40, 7.9, 0.92, NAVY_DEEP, edge=GREEN_BRIGHT, radius=0.06,
          line_w=1.75)
-    tf = textbox(slide, LEFT + 0.24, ey + 0.54, 4.4, 0.72)
+    icon(slide, "verdict", LEFT + 0.26, ey + 0.60, 0.42)
+    tf = textbox(slide, LEFT + 0.82, ey + 0.52, 3.9, 0.72)
     rich(tf, [("IDENTIFIED", True, GREEN_BRIGHT), ("    r07, session #0", True, WHITE)],
          size=14, space_after=3, first=True)
     para(tf, "false-accusation probability at most 2.8 × 10⁻⁵⁹", size=8.5,
@@ -309,69 +325,73 @@ def slide3(slide):
     drop(find(slide, "TextBox 8"))
     set_title(slide, "TECHNICAL APPROACH")
 
+    # 8.66in of panel used to hold 9.12in of boxes, so the rightmost column of every
+    # row hung over the edge of the field it was supposed to sit in.
     dw = 8.66
-    panel(slide, LEFT, TOP, dw, 5.46)
-    rect(slide, LEFT, TOP, dw, 0.055, ORANGE, radius=0.0)
+    panel(slide, LEFT, TOP, dw, 5.52)
 
-    tf = textbox(slide, LEFT + 0.22, TOP + 0.18, 6.0, 0.42)
+    tf = textbox(slide, LEFT + 0.30, TOP + 0.14, 6.0, 0.42)
     para(tf, "End-to-end flow", size=12, bold=True, color=WHITE, space_after=1,
          first=True)
     para(tf, "distribute · decrypt & record · trace — every stage runs offline",
          size=8, italic=True, color=ON_DARK_DIM, space_after=0)
 
-    bw, bh, gap = 1.88, 0.92, 0.28
-    xs = [LEFT + 0.36 + i * (bw + gap) for i in range(4)]
+    bw, bh, gap = 1.80, 1.10, 0.29
+    xs = [LEFT + 0.30 + i * (bw + gap) for i in range(4)]
 
-    def stage(y, number, name, color):
-        hexbadge(slide, LEFT + 0.22, y - 0.31, 0.26, number, fill=color, fsize=8.5)
-        tf = textbox(slide, LEFT + 0.60, y - 0.30, 5.0, 0.2)
-        para(tf, name, size=7.6, bold=True, color=color, space_after=0, first=True,
+    def stage(y, mark, name, color):
+        # A pictogram, not a digit: the template prompts down the right-hand side are
+        # already numbered, and two independent 1-2-3 sequences on one slide read as
+        # one broken sequence.
+        hexicon(slide, LEFT + 0.30, y - 0.33, 0.28, mark, fill=color)
+        tf = textbox(slide, LEFT + 0.68, y - 0.31, 5.0, 0.2)
+        para(tf, name, size=7.8, bold=True, color=color, space_after=0, first=True,
              caps=True, spacing=1.4)
 
-    y1 = TOP + 1.00
-    stage(y1, "1", "Distribute", ORANGE)
-    node(slide, xs[0], y1, bw, bh, "Sender's document",
-         ["split into base +", "m mark slots"], "ghost")
-    flow_arrow(slide, xs[0] + bw + 0.02, y1 + bh / 2, gap - 0.04)
-    node(slide, xs[1], y1, bw, bh, "Variant encryption",
-         ["AES-256-GCM, a different", "key per rendering"], "accent")
-    flow_arrow(slide, xs[1] + bw + 0.02, y1 + bh / 2, gap - 0.04)
-    node(slide, xs[2], y1, bw, bh, "Key bundles",
-         ["wrapped with ML-KEM-768,", "one key per slot each"], "dark")
-    flow_arrow(slide, xs[2] + bw + 0.02, y1 + bh / 2, gap - 0.04)
-    node(slide, xs[3], y1, bw, bh, "One package",
-         ["identical ciphertext", "for all N recipients"], "dark")
-    flow_arrow_down(slide, LEFT + dw / 2, y1 + bh + 0.04, 0.30)
+    y1 = TOP + 0.86
+    stage(y1, "package", "Distribute", ORANGE)
+    iconnode(slide, xs[0], y1, bw, bh, "document", "Sender's document",
+             ["split into base +", "m mark slots"], "ghost")
+    flow_arrow(slide, xs[0] + bw + 0.02, y1 + bh / 2, gap - 0.04, ORANGE)
+    iconnode(slide, xs[1], y1, bw, bh, "lock", "Variant encryption",
+             ["AES-256-GCM, a different", "key per rendering"], "accent")
+    flow_arrow(slide, xs[1] + bw + 0.02, y1 + bh / 2, gap - 0.04, ORANGE)
+    iconnode(slide, xs[2], y1, bw, bh, "keys", "Key bundles",
+             ["wrapped with ML-KEM-768,", "one key per slot each"], "dark")
+    flow_arrow(slide, xs[2] + bw + 0.02, y1 + bh / 2, gap - 0.04, ORANGE)
+    iconnode(slide, xs[3], y1, bw, bh, "package", "One package",
+             ["identical ciphertext for all N,", "116 KB shared + 34 KB each"], "dark")
 
-    y2 = y1 + bh + 0.60
-    stage(y2, "2", "Decrypt & record", GREEN_BRIGHT)
-    node(slide, xs[0], y2, bw, bh, "Recipient decrypts",
-         ["unwraps bundle,", "spends one session"], "dark")
+    y2 = y1 + bh + 0.46
+    stage(y2, "receipt", "Decrypt & record", GREEN_BRIGHT)
+    iconnode(slide, xs[0], y2, bw, bh, "unlock", "Recipient decrypts",
+             ["unwraps bundle,", "spends one session"], "dark")
     flow_arrow(slide, xs[0] + bw + 0.02, y2 + bh / 2, gap - 0.04, GREEN_BRIGHT)
-    node(slide, xs[1], y2, bw, bh, "Uniquely marked copy",
-         ["one rendering per slot;", "the other is a tag failure"], "good")
+    iconnode(slide, xs[1], y2, bw, bh, "fingerprint", "Uniquely marked copy",
+             ["one rendering per slot;", "the other is a tag failure"], "good")
     flow_arrow(slide, xs[1] + bw + 0.02, y2 + bh / 2, gap - 0.04, GREEN_BRIGHT)
-    node(slide, xs[2], y2, bw, bh, "Signed receipt",
-         ["ML-DSA-65, the recipient's", "own private key"], "good")
+    iconnode(slide, xs[2], y2, bw, bh, "receipt", "Signed receipt",
+             ["ML-DSA-65, the recipient's", "own private key"], "good")
     flow_arrow(slide, xs[2] + bw + 0.02, y2 + bh / 2, gap - 0.04, GREEN_BRIGHT)
-    node(slide, xs[3], y2, bw, bh, "Distributed ledger",
-         ["3 validator replicas,", "2-of-3 block commit"], "good")
-    flow_arrow_down(slide, LEFT + dw / 2, y2 + bh + 0.04, 0.30)
+    iconnode(slide, xs[3], y2, bw, bh, "ledger", "Distributed ledger",
+             ["3 validator replicas,", "2-of-3 block commit"], "good")
 
-    y3 = y2 + bh + 0.60
-    stage(y3, "3", "Trace a leak", CYAN)
-    node(slide, xs[0], y3, bw, bh, "Leaked copy", ["extract the slot bits"], "ghost")
+    y3 = y2 + bh + 0.46
+    stage(y3, "lookup", "Trace a leak", CYAN)
+    iconnode(slide, xs[0], y3, bw, bh, "leak", "Leaked copy",
+             ["extract the slot bits"], "ghost")
     flow_arrow(slide, xs[0] + bw + 0.02, y3 + bh / 2, gap - 0.04, CYAN)
-    node(slide, xs[1], y3, bw, bh, "Tardos scoring",
-         ["score against every", "issued codeword"], "dark")
+    iconnode(slide, xs[1], y3, bw, bh, "score", "Tardos scoring",
+             ["score against every", "issued codeword"], "dark")
     flow_arrow(slide, xs[1] + bw + 0.02, y3 + bh / 2, gap - 0.04, CYAN)
-    node(slide, xs[2], y3, bw, bh, "Ledger lookup",
-         ["commitment → receipt,", "signature + quorum checked"], "dark")
+    iconnode(slide, xs[2], y3, bw, bh, "lookup", "Ledger lookup",
+             ["commitment → receipt,", "signature + quorum checked"], "dark")
     flow_arrow(slide, xs[2] + bw + 0.02, y3 + bh / 2, gap - 0.04, ORANGE)
-    node(slide, xs[3], y3, bw, bh, "Verifiable verdict",
-         ["recipient + session", "+ provable error bound"], "accent")
+    iconnode(slide, xs[3], y3, bw, bh, "verdict", "Verifiable verdict",
+             ["recipient + session", "+ provable error bound"], "accent")
 
-    tf = textbox(slide, LEFT + 0.22, y3 + bh + 0.16, dw - 0.44, 0.22)
+    icon(slide, "offline", LEFT + 0.30, y3 + bh + 0.15, 0.20)
+    tf = textbox(slide, LEFT + 0.58, y3 + bh + 0.15, dw - 0.90, 0.22)
     rich(tf, [("Offline and air-gapped throughout — ", True, ORANGE),
               ("no cloud KMS, no public blockchain, no network call at any stage, "
                "asserted by a test that refuses every socket operation.", False,
@@ -379,15 +399,19 @@ def slide3(slide):
          size=8, space_after=0, first=True)
 
     rx, rw = 9.32, 3.61
-    heading(slide, rx, TOP, rw, "T", "Technologies to be used")
-    logo_row(slide, rx + 0.10, TOP + 0.48, 0.40, 0.29,
+    heading(slide, rx, TOP, rw, "1", "Technologies to be used")
+
+    # One card instead of a floating logo grid above a floating spec list.
+    rect(slide, rx, TOP + 0.44, rw, 3.28, CARD, edge=CARD_EDGE, radius=0.06,
+         line_w=1.25)
+    logo_row(slide, rx + 0.26, TOP + 0.58, 0.38, 0.30,
              [("python", "Python"), ("fastapi", "FastAPI"), ("numpy", "NumPy"),
               ("docker", "Docker"), ("linux", "Linux")])
-    logo_row(slide, rx + 0.10, TOP + 1.14, 0.40, 0.29,
+    logo_row(slide, rx + 0.26, TOP + 1.28, 0.38, 0.30,
              [("pytest", "pytest"), ("github", "GitHub"), ("render", "Render"),
               ("huggingface", "HF"), ("bash", "Bash")])
 
-    tf = textbox(slide, rx, TOP + 1.86, rw, 1.5)
+    tf = textbox(slide, rx + 0.18, TOP + 2.06, rw - 0.36, 1.44)
     for i, (key, value) in enumerate([
         ("Key exchange", "ML-KEM-768  ·  FIPS 203"),
         ("Signatures", "ML-DSA-65  ·  FIPS 204"),
@@ -397,24 +421,20 @@ def slide3(slide):
         ("Ledger", "hash chain + Merkle blocks, 2-of-3"),
         ("Carriers", "zero-width space  ·  PDF kerning"),
     ]):
-        rich(tf, [(key + "   ", True, NAVY), (value, False, INK)], size=8.2,
-             space_after=2.5, first=(i == 0))
+        rich(tf, [(key + "   ", True, NAVY), (value, False, INK)], size=8.6,
+             space_after=3.6, first=(i == 0))
 
-    heading(slide, rx, TOP + 3.48, rw, "M",
+    heading(slide, rx, TOP + 3.88, rw, "2",
             "Methodology and process for implementation")
-    tf = textbox(slide, rx, TOP + 3.90, rw, 1.3)
+    tf = textbox(slide, rx, TOP + 4.30, rw, 1.5)
     bullets(tf, [
         "Safety and audit layers built and tested before any tracing existed.",
         "Test-first: 163 tests, including the central claim that a recipient cannot "
         "decrypt the other variant.",
         "Every attack on the carrier measured and published — including the four that "
         "defeat it.",
-    ], size=8.2, gap=3.4)
-
-    rect(slide, rx, TOP + 5.00, rw, 0.36, MINT, edge=MINT_EDGE, radius=0.07, line_w=1.25)
-    tf = textbox(slide, rx + 0.14, TOP + 5.08, rw - 0.28, 0.24)
-    para(tf, "Shared ciphertext + a 14 KB bundle each, flat in N.", size=8, bold=True,
-         color=GREEN, space_after=0, first=True)
+        "Shipped, not staged: one container on a free tier, no GPU and no HSM.",
+    ], size=8.4, gap=4)
 
 
 def slide4(slide):
