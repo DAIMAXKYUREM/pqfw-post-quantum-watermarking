@@ -68,7 +68,10 @@ NOTES = {
     3: ("Three stages, all offline. Distribute: one ciphertext for everybody plus a 14 KB "
         "key bundle each. Decrypt: the recipient spends one credential, gets a uniquely "
         "marked copy, and signs an ML-DSA-65 receipt with their own key — that is the "
-        "non-repudiation. Record: three validators independently verify that receipt and "
+        "non-repudiation. Note the split on the right: the post-quantum primitives "
+        "enforce and attest the fingerprint, they do not compute it — a Tardos code is "
+        "information-theoretic, so there is no hardness assumption in it for a quantum "
+        "computer to break. Record: three validators independently verify that receipt and "
         "commit it 2-of-3. Trace: extract the marks, score them, check the ledger. No "
         "cloud KMS, no public chain, no network call at any point."),
     4: ("We are honest about what breaks it. Two attacks still win — stripping "
@@ -429,7 +432,7 @@ def slide3(slide):
     heading(slide, rx, TOP, rw, "1", "Technologies to be used")
 
     # One card instead of a floating logo grid above a floating spec list.
-    rect(slide, rx, TOP + 0.44, rw, 3.28, CARD, edge=CARD_EDGE, radius=0.06,
+    rect(slide, rx, TOP + 0.44, rw, 3.66, CARD, edge=CARD_EDGE, radius=0.06,
          line_w=1.25)
     logo_row(slide, rx + 0.26, TOP + 0.58, 0.38, 0.30,
              [("python", "Python"), ("fastapi", "FastAPI"), ("numpy", "NumPy"),
@@ -438,30 +441,44 @@ def slide3(slide):
              [("pytest", "pytest"), ("github", "GitHub"), ("render", "Render"),
               ("huggingface", "HF"), ("bash", "Bash")])
 
-    tf = textbox(slide, rx + 0.18, TOP + 2.06, rw - 0.36, 1.44)
-    for i, (key, value) in enumerate([
-        ("Key exchange", "ML-KEM-768  ·  FIPS 203"),
-        ("Signatures", "ML-DSA-65  ·  FIPS 204"),
-        ("PQC library", "liboqs 0.16.0 (Open Quantum Safe)"),
-        ("Content", "AES-256-GCM  ·  HKDF-SHA3-256"),
-        ("Fingerprint", "symmetric Tardos code (Škorić)"),
-        ("Ledger", "hash chain + Merkle blocks, 2-of-3"),
-        ("Carriers", "zero-width space  ·  PDF kerning"),
-        ("Addressing", "content-anchored, SHA3-256"),
-    ]):
-        rich(tf, [(key + "   ", True, NAVY), (value, False, INK)], size=8.6,
-             space_after=3.6, first=(i == 0))
+    # Split, because "post-quantum watermarking" invites the reading that the
+    # fingerprint is post-quantum. It is not, and cannot be: a Tardos code rests on no
+    # computational hardness assumption at all, so there is nothing in it for a quantum
+    # computer to break and nothing to harden. The PQC does the enforcing and the
+    # attesting. Grouping the stack by that role says so without a paragraph.
+    groups = [
+        (TOP + 1.96, "Post-quantum", "enforces the fingerprint and attests it", [
+            ("Key exchange", "ML-KEM-768  ·  FIPS 203"),
+            ("Signatures", "ML-DSA-65  ·  FIPS 204"),
+            ("PQC library", "liboqs 0.16.0 (Open Quantum Safe)"),
+            ("Content", "AES-256-GCM  ·  HKDF-SHA3-256"),
+            ("Ledger", "hash chain + Merkle blocks, 2-of-3"),
+        ]),
+        (TOP + 3.19, "Classical", "the code itself — information-theoretic, not "
+                                  "computational", [
+            ("Fingerprint", "symmetric Tardos code (Škorić)"),
+            ("Carriers", "zero-width space  ·  PDF kerning"),
+            ("Addressing", "content-anchored, SHA3-256"),
+        ]),
+    ]
+    for gy, name, note, rows in groups:
+        tf = textbox(slide, rx + 0.18, gy, rw - 0.36, 0.18)
+        rich(tf, [(name.upper() + "   ", True, ORANGE), (note, False, MUTED)],
+             size=7.2, space_after=0, first=True)
+        tf = textbox(slide, rx + 0.18, gy + 0.18, rw - 0.36, len(rows) * 0.19)
+        for i, (key, value) in enumerate(rows):
+            rich(tf, [(key + "   ", True, NAVY), (value, False, INK)], size=8.6,
+                 space_after=3.6, first=(i == 0))
 
-    heading(slide, rx, TOP + 3.88, rw, "2",
+    heading(slide, rx, TOP + 4.26, rw, "2",
             "Methodology and process for implementation")
-    tf = textbox(slide, rx, TOP + 4.30, rw, 1.5)
+    tf = textbox(slide, rx, TOP + 4.68, rw, 1.5)
     bullets(tf, [
         "Safety and audit layers built and tested before any tracing existed.",
         "Test-first: 170 tests, including the central claim that a recipient cannot "
         "decrypt the other variant.",
         "Every attack on the carrier measured and published — including the two that "
         "still defeat it.",
-        "Shipped, not staged: one container on a free tier, no GPU and no HSM.",
     ], size=8.4, gap=4)
 
 
