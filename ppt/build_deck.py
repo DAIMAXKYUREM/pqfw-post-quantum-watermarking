@@ -239,8 +239,14 @@ def slide2(slide):
     drop(find(slide, "TextBox 8"))
     set_title(slide, "PQFW — A LEAK THAT NAMES ITSELF", size=25)
 
-    heading(slide, LEFT, TOP, 7.9, "1",
-            "Proposed Solution (Describe your Idea/Solution/Prototype)")
+    # The template writes this prompt as "Proposed Solution (Describe your
+    # Idea/Solution/Prototype)". The parenthetical is an instruction to whoever fills
+    # the deck in, not a heading for whoever reads it, and printing it on a submission
+    # reads as text nobody deleted. Dropped here for the same reason the equivalent
+    # parentheticals on slide 3 were dropped -- "(e.g. programming languages,
+    # frameworks, hardware)" and "(Flow Charts/Images/ working prototype)". The prompts
+    # themselves stay verbatim.
+    heading(slide, LEFT, TOP, 7.9, "1", "Proposed Solution")
 
     # The sentence that explains the diagram used to sit outside the panel as a strip
     # of unhoused prose. It belongs to the diagram, so it lives in the same dark field.
