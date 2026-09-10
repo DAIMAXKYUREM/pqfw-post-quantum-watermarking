@@ -28,7 +28,8 @@ sys.path.insert(0, str(ROOT))
 
 from design import (  # noqa: E402
     AMBER, BODY, CARD, CARD_EDGE, CYAN, FAINT, GREEN, GREEN_BRIGHT, INK, LEFT, MINT,
-    MINT_EDGE, MUTED, NAVY, NAVY_DEEP, ON_DARK_DIM, ORANGE, RED, RIGHT, ROSE, ROSE_EDGE,
+    MINT_EDGE, MUTED, NAVY, NAVY_DEEP, NAVY_EDGE, NAVY_NODE, ON_DARK_DIM, ORANGE,
+    RED, RIGHT, ROSE, ROSE_EDGE,
     TOP, WARM, WARM_EDGE, WHITE, bullets, flow_arrow, flow_arrow_down, heading, hexbadge,
     bring_to_front, icon, iconnode, label, logo, node, panel, para, rect, rich,
     stat, textbox, hexicon,
@@ -37,6 +38,7 @@ from design import (  # noqa: E402
 TEMPLATE = ROOT / "template.pptx"
 OUT = ROOT / "NOX_SIH2026_PQFW.pptx"
 LOGOS = ROOT / "logos"
+CHARTS = ROOT / "charts"
 
 PS_ID = "SIH26237"
 PS_TITLE = ("Cryptographic Attribution and Immutable Decryption Provenance for "
@@ -73,8 +75,10 @@ NOTES = {
         "characters defeat the text carrier, and inserting a word desynchronises the "
         "slots — all four are measured and published rather than hidden. The point is the "
         "failure mode: when an attack wins the system fails to identify anybody. "
-        "Misidentification stayed at zero across the whole erasure sweep. The bottom row "
-        "is the actual next four steps, not an aspiration."),
+        "Both curves are drawn straight from the evaluation CSVs. The left one is the "
+        "whole argument in one picture: as you destroy the marks the green line falls, "
+        "and the orange line — naming the wrong person — stays flat on zero the entire "
+        "way. The bottom row is the actual next four steps, not an aspiration."),
     5: ("Ministry of Defence context: service HQ, procurement, DRDO and partners, "
         "inter-agency sharing. The real product is deterrence — when every holder knows "
         "their copy is individually accountable, most leaks never happen. And it protects "
@@ -158,62 +162,76 @@ def slide1(slide):
     drop(find(slide, "TextBox 9"))
 
     # A half-bleed dark field, stopped short of the template's own hexagon artwork.
-    # The earlier version ran to 7.62in and clipped the left lobe of it, which read as
-    # an accident rather than a crop, and carried an orange rule along its top edge --
-    # the accent stripe that makes a slide look assembled from a theme.
     panel(slide, 0.0, 1.00, 7.12, 6.50, NAVY_DEEP, radius=0.0)
 
     subtitle = find(slide, "Subtitle 3")
     if subtitle is not None:
-        subtitle.left, subtitle.top = Inches(0.60), Inches(1.30)
-        subtitle.width, subtitle.height = Inches(6.2), Inches(1.10)
+        subtitle.left, subtitle.top = Inches(0.58), Inches(1.24)
+        subtitle.width, subtitle.height = Inches(6.0), Inches(1.02)
         tf = subtitle.text_frame
         tf.clear()
         tf.margin_left = tf.margin_right = Emu(0)
-        para(tf, "PQFW", size=44, bold=True, color=WHITE, space_after=0, first=True)
+        para(tf, "PQFW", size=42, bold=True, color=WHITE, space_after=0, first=True)
         para(tf, "Post-Quantum Forensic Watermarking", size=14.5, bold=True,
              color=ORANGE, space_after=0)
         bring_to_front(subtitle)
 
-    # What the thing is, in one sentence. This also closes the inch of unexplained
-    # navy that used to sit between the metadata block and the QR card.
-    tf = textbox(slide, 0.60, 2.44, 6.10, 0.44)
-    rich(tf, [("One document goes to many cleared recipients. Each decrypted copy "
-               "carries an invisible, per-session fingerprint, so a leak resolves to ",
-               False, ON_DARK_DIM),
-              ("one name", True, WHITE),
-              (" — with a provable error bound.", False, ON_DARK_DIM)],
-         size=10.2, space_after=0, first=True)
-
-    tf = textbox(slide, 0.60, 3.02, 6.10, 1.86)
-    rows = [
-        ("Problem Statement ID", PS_ID),
-        ("Problem Statement Title", PS_TITLE),
-        ("Organisation", ORG),
-        ("Theme", THEME),
-        ("PS Category", "Software"),
-        ("Team ID", TEAM_ID),
-        ("Team Name", f"{TEAM_NAME}  ·  {INSTITUTE}"),
+    # The whole idea in three beats. This replaces the sentence that used to sit here:
+    # the opening slide was otherwise a stack of six text blocks in descending size,
+    # which is a form rather than a title, and nothing on it showed what PQFW does.
+    beats = [
+        ("package", "One ciphertext", "broadcast to every cleared recipient"),
+        ("fingerprint", "N distinct copies", "each keyed to one person and one session"),
+        ("verdict", "One name", "a leak traced, with a provable error bound"),
     ]
-    for i, (key, value) in enumerate(rows):
-        rich(tf, [(key + "   ", False, ON_DARK_DIM), (value, True, WHITE)],
-             size=9.6, space_after=4.5, first=(i == 0))
+    bw, bgap = 1.80, 0.30
+    by = 2.52
+    for i, (mark, head, body) in enumerate(beats):
+        bx = 0.58 + i * (bw + bgap)
+        rect(slide, bx, by, bw, 0.92, NAVY_NODE, edge=NAVY_EDGE, radius=0.08,
+             line_w=1.25)
+        icon(slide, mark, bx + 0.13, by + 0.32, 0.28)
+        tf = textbox(slide, bx + 0.50, by + 0.13, bw - 0.62, 0.70)
+        para(tf, head, size=9.2, bold=True, color=WHITE, space_after=2.5, first=True)
+        para(tf, body, size=7.2, color=ON_DARK_DIM, space_after=0)
+        if i < 2:
+            flow_arrow(slide, bx + bw + 0.05, by + 0.46, bgap - 0.10, ORANGE)
+
+    # Two columns rather than seven full-width rows, which read as a form to fill in.
+    fields = [
+        [("Problem Statement ID", PS_ID),
+         ("Organisation", ORG),
+         ("Team ID", TEAM_ID)],
+        [("PS Category", "Software"),
+         ("Theme", THEME),
+         ("Team Name", TEAM_NAME)],
+    ]
+    for col, rows in enumerate(fields):
+        tf = textbox(slide, 0.58 + col * 2.76, 3.72, 2.62, 0.66)
+        for i, (key, value) in enumerate(rows):
+            rich(tf, [(key + "   ", False, ON_DARK_DIM), (value, True, WHITE)],
+                 size=8.6, space_after=4.5, first=(i == 0))
+
+    tf = textbox(slide, 0.58, 4.50, 6.00, 0.54)
+    para(tf, "Problem Statement Title", size=7, bold=True, color=ON_DARK_DIM,
+         space_after=2.5, first=True, spacing=1.4, caps=True)
+    para(tf, PS_TITLE, size=9.8, bold=True, color=WHITE, space_after=0)
 
     # scannable from the back of the room
-    rect(slide, 0.60, 5.02, 6.10, 1.22, WHITE, edge=ORANGE, radius=0.06, line_w=1.5)
+    rect(slide, 0.58, 5.26, 6.00, 1.30, WHITE, edge=ORANGE, radius=0.06, line_w=1.5)
     qr = ROOT / "qr_live.png"
     if qr.exists():
-        logo(slide, qr, 0.75, 5.17, 0.92)
-    tf = textbox(slide, 1.82, 5.19, 4.72, 0.90)
+        logo(slide, qr, 0.73, 5.45, 0.96)
+    tf = textbox(slide, 1.84, 5.46, 4.60, 0.94)
     para(tf, "LIVE WORKING PROTOTYPE  ·  SCAN IT", size=8, bold=True, color=GREEN,
          space_after=2.5, first=True, spacing=1.2)
     para(tf, LIVE, size=14, bold=True, color=NAVY_DEEP, space_after=2.5)
     para(tf, "Real ML-KEM-768 / ML-DSA-65 computed server-side.  Evaluation and attack "
              "results: " + RESULTS, size=7, color=MUTED, space_after=0)
 
-    tf = textbox(slide, 0.60, 6.52, 6.10, 0.5)
-    para(tf, "TEAM MEMBERS", size=7, bold=True, color=ON_DARK_DIM, space_after=2.5,
-         first=True, spacing=1.4)
+    tf = textbox(slide, 0.58, 6.76, 6.00, 0.5)
+    para(tf, f"Team {TEAM_NAME}  ·  {INSTITUTE}", size=7, bold=True, color=ON_DARK_DIM,
+         space_after=2.5, first=True, spacing=1.4, caps=True)
     para(tf, "  ·  ".join(MEMBERS), size=8.2, color=WHITE, space_after=0)
 
 
@@ -481,29 +499,47 @@ def slide4(slide):
     ]
     for x, (num, title, fill, edge, accent, items) in zip(xs, columns):
         heading(slide, x, TOP, colw, num, title)
-        rect(slide, x, TOP + 0.44, colw, 2.16, fill, edge=edge, radius=0.06, line_w=1.25)
-        tf = textbox(slide, x + 0.16, TOP + 0.56, colw - 0.32, 1.95)
+        rect(slide, x, TOP + 0.44, colw, 1.80, fill, edge=edge, radius=0.06, line_w=1.25)
+        tf = textbox(slide, x + 0.16, TOP + 0.56, colw - 0.32, 1.62)
         for i, (head, body) in enumerate(items):
-            rich(tf, [(head + " ", True, accent), (body, False, MUTED)], size=8.6,
-                 space_after=5.5, first=(i == 0))
+            rich(tf, [(head + " ", True, accent), (body, False, MUTED)], size=8.4,
+                 space_after=4.6, first=(i == 0))
 
-    panel(slide, LEFT, TOP + 2.80, RIGHT - LEFT, 1.28)
-    label(slide, LEFT + 0.22, TOP + 2.92, 4.0, "Measured, not asserted", color=ORANGE,
+    # Four of the six numbers that used to sit here were summaries of two curves.
+    # The curves say the same thing and say it better, because the argument is the
+    # shape: a detection rate that falls away while the misidentification rate stays
+    # flat on zero is a claim you can only make honestly by plotting both together.
+    # Both images are generated from eval/results/*.csv by ppt/make_charts.py.
+    panel(slide, LEFT, TOP + 2.42, RIGHT - LEFT, 1.86)
+    charts = [
+        ("erasure.png", "Destroy the marks and it goes quiet, never wrong"),
+        ("collusion.png", "Colluders splicing copies, against the theory's own bound"),
+    ]
+    cx = LEFT + 0.22
+    for name, caption in charts:
+        path = CHARTS / name
+        tf = textbox(slide, cx, TOP + 2.52, 4.32, 0.2)
+        para(tf, caption, size=7.8, bold=True, color=ORANGE, space_after=0, first=True)
+        if path.exists():
+            slide.shapes.add_picture(str(path), Inches(cx), Inches(TOP + 2.70),
+                                     Inches(4.32), Inches(1.42))
+        cx += 4.32 + 0.16
+
+    label(slide, cx + 0.12, TOP + 2.52, 3.1, "Measured, not asserted", color=ORANGE,
           size=7.8)
     figures = [
-        ("100%", "coalition of 8 traced at the\nprescribed code length", GREEN_BRIGHT),
-        ("0.0%", "misidentification across a\n0–95% erasure sweep", GREEN_BRIGHT),
-        ("2.8e-59", "provable false-accusation\nbound on the live demo", WHITE),
-        ("0 / 10,000", "innocent trials accused\nat α ≤ 1e-5", GREEN_BRIGHT),
-        ("4", "attacks that defeat the\ncarrier — all published", ORANGE),
-        ("163", "automated tests,\nall passing", WHITE),
+        ("2.8 × 10⁻⁵⁹", "provable false-accusation bound on the live demo", WHITE),
+        ("4", "attacks that defeat the carrier — every one published", ORANGE),
+        ("163", "automated tests, all passing", GREEN_BRIGHT),
     ]
-    sw = (RIGHT - LEFT - 0.44) / len(figures)
-    for i, (value, caption, color) in enumerate(figures):
-        stat(slide, LEFT + 0.22 + i * sw, TOP + 3.22, sw, value, caption, color=color,
-             vsize=18, csize=7.0, on_dark=True)
+    fy = TOP + 2.76
+    for value, caption, color in figures:
+        tf = textbox(slide, cx + 0.12, fy, 3.1, 0.44)
+        para(tf, value, size=15, bold=True, color=color, space_after=0, first=True)
+        para(tf, caption, size=6.9, color=ON_DARK_DIM, space_after=0)
+        fy += 0.46
 
-    heading(slide, LEFT, TOP + 4.26, RIGHT - LEFT, "4", "Path to deployment")
+    heading(slide, LEFT, TOP + 4.42, RIGHT - LEFT, "4", "Path to deployment")
     steps = [
         ("NOW", "Working prototype", "text and PDF carriers, 3-validator ledger, live"),
         ("NEXT", "Content-anchored slots", "removes the word-insertion weakness"),
@@ -514,15 +550,15 @@ def slide4(slide):
     stepw = (RIGHT - LEFT - 3 * 0.34) / 4
     for i, (tag, head, body) in enumerate(steps):
         live = i == 0
-        rect(slide, sx, TOP + 4.66, stepw, 0.90, MINT if live else CARD,
+        rect(slide, sx, TOP + 4.76, stepw, 0.82, MINT if live else CARD,
              edge=MINT_EDGE if live else CARD_EDGE, radius=0.07, line_w=1.25)
-        tf = textbox(slide, sx + 0.16, TOP + 4.76, stepw - 0.32, 0.72)
+        tf = textbox(slide, sx + 0.16, TOP + 4.86, stepw - 0.32, 0.66)
         para(tf, tag, size=6.8, bold=True, color=GREEN if live else FAINT,
              space_after=1.5, first=True, spacing=1.4)
         para(tf, head, size=9.4, bold=True, color=NAVY, space_after=1.5)
         para(tf, body, size=7.6, color=MUTED, space_after=0)
         if i < 3:
-            flow_arrow(slide, sx + stepw + 0.05, TOP + 5.11, 0.24, NAVY)
+            flow_arrow(slide, sx + stepw + 0.05, TOP + 5.17, 0.24, NAVY)
         sx += stepw + 0.34
 
 
